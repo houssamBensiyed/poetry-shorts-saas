@@ -1,0 +1,49 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// Exactly matches status lifecycle in poetry-shorts-maker, plus the Buffer
+// scheduling states that continue after the worker run has finished.
+enum JobStatus {
+  queued
+  processing
+  rendered
+  submitting
+  scheduled
+  publishing
+  partial
+  published
+  completed
+  failed
+}
+
+// One Buffer post, for one destination (platform) of one voice.
+enum PublishStatus {
+  scheduled
+  publishing
+  published
+  failed
+}
+
+enum ReelStyle {
+  A
+  B
+}
+
+// Where a user's voice files live. REMOTE keeps today's Cloudinary flow; LOCAL
+// writes to a folder shared with the render engine and passes absolute paths.
+enum StorageMode {
+  LOCAL
+  REMOTE
+}
+
