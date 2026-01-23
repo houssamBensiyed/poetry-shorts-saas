@@ -47,3 +47,50 @@ enum StorageMode {
   REMOTE
 }
 
+model User {
+  id           String               @id @default(uuid()) @db.Uuid
+  email        String               @unique
+  name         String?              @db.VarChar(80)
+  passwordHash String
+  role         Role                 @default(USER)
+  active       Boolean              @default(true)
+  storage_mode StorageMode          @default(REMOTE)
+  // Built-in avatar path, custom image data URL, or null for the default.
+  avatar_url   String?              @db.Text
+  // Per-user Cloudinary account. The API secret is encrypted with AES-256-GCM.
+  cloudinary_cloud_name String?     @db.VarChar(100)
+  cloudinary_api_key    String?     @db.VarChar(200)
+  cloudinary_api_secret String?     @db.Text
+  channels     Channel[]
+  queueRuns    QueueRun[]
+  voices       Voice[]
+  postingTimes ChannelPostingTime[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+}
+
+// An app-level channel: a group of Buffer destinations that share one Buffer
+// account, one language, and one list of remembered UTC posting times.
+model Channel {
+  id                       String               @id @default(uuid()) @db.Uuid
+  userId                   String               @db.Uuid
+  user                     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                     String               @db.VarChar(80)
+  language                 String               @default("en") @db.VarChar(20)
+  language_group           String               @default("en") @db.VarChar(10)
+  reel_style               ReelStyle            @default(A)
+  aspect_ratio             String               @default("9:16") @db.VarChar(10)
+  enabled                  Boolean              @default(true)
+  buffer_organization_id   String?              @db.VarChar(100)
+  buffer_organization_name String?              @db.VarChar(200)
+  buffer_access_token      String               @db.Text // Encrypted with AES-256-GCM
+  destinations             ChannelDestination[]
+  voices                   Voice[]
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([userId, language_group])
+}
+
+// One Buffer channel = one social destination inside an app channel.
