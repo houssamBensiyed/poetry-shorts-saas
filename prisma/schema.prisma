@@ -94,3 +94,57 @@ model Channel {
 }
 
 // One Buffer channel = one social destination inside an app channel.
+model ChannelDestination {
+  id                  String         @id @default(uuid()) @db.Uuid
+  channelId           String         @db.Uuid
+  channel             Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  buffer_channel_id   String         @db.VarChar(200)
+  name                String         @db.VarChar(200)
+  service             String         @db.VarChar(50)
+  avatar              String?        @db.Text
+  enabled             Boolean        @default(true)
+  is_disconnected     Boolean        @default(false)
+  is_locked           Boolean        @default(false)
+  is_queue_paused     Boolean        @default(false)
+  youtube_category_id String?        @db.VarChar(5)
+  last_synced_at      DateTime?
+  publishes           VoicePublish[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([channelId, buffer_channel_id])
+  @@index([channelId])
+}
+
+// Remembered posting times, per user and language group. Time only, never a
+// date: dates are always chosen fresh for each voice.
+model ChannelPostingTime {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  language_group String   @db.VarChar(10)
+  time_minutes   Int
+  use_count      Int      @default(1)
+  last_used_at   DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, language_group, time_minutes])
+  @@index([userId, language_group, last_used_at])
+}
+
+// Represents a "Process saved voices" execution run across all user channels
+model QueueRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          JobStatus @default(processing)
+  total_items     Int       @default(0)
+  completed_items Int       @default(0)
+  voices          Voice[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, status])
+}
+
+// Individual recording / voice job
