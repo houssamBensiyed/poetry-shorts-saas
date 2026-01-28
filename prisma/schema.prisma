@@ -148,3 +148,56 @@ model QueueRun {
 }
 
 // Individual recording / voice job
+model Voice {
+  id                 String         @id @default(uuid()) @db.Uuid
+  userId             String         @db.Uuid
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId          String         @db.Uuid
+  channel            Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  queueRunId         String?        @db.Uuid
+  queueRun           QueueRun?      @relation(fields: [queueRunId], references: [id], onDelete: SetNull)
+  title              String         @db.VarChar(500)
+  description        String         @default("") @db.Text
+  audio_url          String         @db.Text
+  storage_mode       StorageMode    @default(REMOTE)
+  upload_to_buffer   Boolean        @default(true)
+  reel_style         ReelStyle      @default(A)
+  status             JobStatus      @default(queued)
+  scheduled_at       DateTime?      @db.Timestamptz(3)
+  rendered_video_url String?        @db.Text
+  buffer_video_url   String?        @db.Text
+  duration_seconds   Float?
+  buffer_post_id     String?        @db.VarChar(200)
+  error_message      String?        @db.Text
+  last_synced_at     DateTime?      @db.Timestamptz(3)
+  publishes          VoicePublish[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([userId, status])
+  @@index([channelId])
+  @@index([queueRunId])
+  @@index([status, scheduled_at])
+}
+
+// One scheduled Buffer post for one destination of one voice.
+model VoicePublish {
+  id             String             @id @default(uuid()) @db.Uuid
+  voiceId        String             @db.Uuid
+  voice          Voice              @relation(fields: [voiceId], references: [id], onDelete: Cascade)
+  destinationId  String             @db.Uuid
+  destination    ChannelDestination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  buffer_post_id String?            @db.VarChar(200)
+  status         PublishStatus      @default(scheduled)
+  error_message  String?            @db.Text
+  scheduled_at   DateTime           @db.Timestamptz(3)
+  published_at   DateTime?          @db.Timestamptz(3)
+  external_url   String?            @db.Text
+  last_synced_at DateTime?          @db.Timestamptz(3)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([voiceId, destinationId])
+  @@index([status, scheduled_at])
+  @@index([voiceId])
+}
