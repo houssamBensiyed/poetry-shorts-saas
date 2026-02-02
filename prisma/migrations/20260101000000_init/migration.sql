@@ -54,3 +54,57 @@ CREATE TABLE "QueueRun" (
 );
 
 -- CreateTable
+CREATE TABLE "Voice" (
+    "id" UUID NOT NULL,
+    "userId" UUID NOT NULL,
+    "channelId" UUID NOT NULL,
+    "queueRunId" UUID,
+    "title" VARCHAR(500) NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
+    "audio_url" TEXT NOT NULL,
+    "upload_to_buffer" BOOLEAN NOT NULL DEFAULT true,
+    "reel_style" "ReelStyle" NOT NULL DEFAULT 'A',
+    "status" "JobStatus" NOT NULL DEFAULT 'queued',
+    "rendered_video_url" TEXT,
+    "duration_seconds" DOUBLE PRECISION,
+    "buffer_post_id" VARCHAR(200),
+    "error_message" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Voice_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
+CREATE INDEX "Channel_userId_idx" ON "Channel"("userId");
+
+-- CreateIndex
+CREATE INDEX "QueueRun_userId_status_idx" ON "QueueRun"("userId", "status");
+
+-- CreateIndex
+CREATE INDEX "Voice_userId_status_idx" ON "Voice"("userId", "status");
+
+-- CreateIndex
+CREATE INDEX "Voice_channelId_idx" ON "Voice"("channelId");
+
+-- CreateIndex
+CREATE INDEX "Voice_queueRunId_idx" ON "Voice"("queueRunId");
+
+-- AddForeignKey
+ALTER TABLE "Channel" ADD CONSTRAINT "Channel_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "QueueRun" ADD CONSTRAINT "QueueRun_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Voice" ADD CONSTRAINT "Voice_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Voice" ADD CONSTRAINT "Voice_channelId_fkey" FOREIGN KEY ("channelId") REFERENCES "Channel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Voice" ADD CONSTRAINT "Voice_queueRunId_fkey" FOREIGN KEY ("queueRunId") REFERENCES "QueueRun"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
