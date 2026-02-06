@@ -83,3 +83,89 @@ CREATE TABLE "VoicePublish" (
 CREATE INDEX "ChannelDestination_channelId_idx" ON "ChannelDestination"("channelId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "ChannelDestination_channelId_buffer_channel_id_key" ON "ChannelDestination"("channelId", "buffer_channel_id");
+
+-- CreateIndex
+CREATE INDEX "ChannelPostingTime_userId_language_group_last_used_at_idx" ON "ChannelPostingTime"("userId", "language_group", "last_used_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ChannelPostingTime_userId_language_group_time_minutes_key" ON "ChannelPostingTime"("userId", "language_group", "time_minutes");
+
+-- CreateIndex
+CREATE INDEX "VoicePublish_status_scheduled_at_idx" ON "VoicePublish"("status", "scheduled_at");
+
+-- CreateIndex
+CREATE INDEX "VoicePublish_voiceId_idx" ON "VoicePublish"("voiceId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "VoicePublish_voiceId_destinationId_key" ON "VoicePublish"("voiceId", "destinationId");
+
+-- CreateIndex
+CREATE INDEX "Channel_userId_language_group_idx" ON "Channel"("userId", "language_group");
+
+-- CreateIndex
+CREATE INDEX "Voice_status_scheduled_at_idx" ON "Voice"("status", "scheduled_at");
+
+-- AddForeignKey
+ALTER TABLE "ChannelDestination" ADD CONSTRAINT "ChannelDestination_channelId_fkey" FOREIGN KEY ("channelId") REFERENCES "Channel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ChannelPostingTime" ADD CONSTRAINT "ChannelPostingTime_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VoicePublish" ADD CONSTRAINT "VoicePublish_voiceId_fkey" FOREIGN KEY ("voiceId") REFERENCES "Voice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "VoicePublish" ADD CONSTRAINT "VoicePublish_destinationId_fkey" FOREIGN KEY ("destinationId") REFERENCES "ChannelDestination"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Migrate existing data: one old Buffer channel becomes the first destination.
+INSERT INTO "ChannelDestination" (
+    "id", "channelId", "buffer_channel_id", "name", "service", "enabled",
+    "is_disconnected", "is_locked", "is_queue_paused", "createdAt", "updatedAt"
+)
+SELECT
+    gen_random_uuid(),
+    "id",
+    "buffer_channel_id",
+    "name",
+    'unknown',
+    true,
+    false,
+    false,
+    false,
+    now(),
+    now()
+FROM "Channel"
+WHERE "buffer_channel_id" IS NOT NULL AND btrim("buffer_channel_id") <> '';
+
+-- Migrate existing data: old voice post IDs become per-destination publish rows.
+INSERT INTO "VoicePublish" (
+    "id", "voiceId", "destinationId", "buffer_post_id", "status",
+    "scheduled_at", "published_at", "last_synced_at", "createdAt", "updatedAt"
+)
+SELECT
+    gen_random_uuid(),
+    v."id",
+    d."id",
+    v."buffer_post_id",
+    CASE
+        WHEN v."status" = 'published' THEN 'published'::"PublishStatus"
+        ELSE 'scheduled'::"PublishStatus"
+    END,
+    COALESCE(v."scheduled_at", v."createdAt"),
+    CASE WHEN v."status" = 'published' THEN v."updatedAt" ELSE NULL END,
+    now(),
+    now(),
+    now()
+FROM "Voice" v
+JOIN "ChannelDestination" d ON d."id" = (
+    SELECT "id"
+    FROM "ChannelDestination"
+    WHERE "channelId" = v."channelId"
+    ORDER BY "createdAt" ASC
+    LIMIT 1
+)
+WHERE v."buffer_post_id" IS NOT NULL AND btrim(v."buffer_post_id") <> '';
+
+-- AlterTable: the single Buffer channel ID now lives in ChannelDestination.
+ALTER TABLE "Channel" DROP COLUMN "buffer_channel_id";
