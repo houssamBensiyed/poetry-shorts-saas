@@ -85,3 +85,42 @@ export const channelUpdateSchema = z.object({
     .max(20)
     .optional(),
 });
+
+export const postingTimeSchema = z.object({
+  group: z.string().trim().min(2).max(10),
+  time: utcTimeSchema,
+});
+
+export const storageModeSchema = z.enum(["LOCAL", "REMOTE"]);
+
+export const voiceMetadataSchema = z.object({
+  channelId: z.string().uuid("Choose a channel"),
+  title: z.string().trim().min(1, "Title is required").max(500),
+  description: z.string().trim().max(5000).default(""),
+  storage_mode: storageModeSchema.optional(),
+  upload_to_buffer: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .transform((value) => value === true || value === "true"),
+  reel_style: z.enum(REEL_STYLES).optional(),
+  scheduled_date: utcDateSchema.optional(),
+  scheduled_time: utcTimeSchema.optional(),
+});
+
+export const scheduleUpdateSchema = z.object({
+  scheduled_date: utcDateSchema,
+  scheduled_time: utcTimeSchema,
+});
+
+export const voiceStatusSchema = z.enum(JOB_STATUSES);
+
+export const profileStorageSchema = z.object({
+  storage_mode: storageModeSchema,
+});
+
+export const profileNameSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Enter a display name")
+    .max(80, "Keep the name under 80 characters"),
+});
