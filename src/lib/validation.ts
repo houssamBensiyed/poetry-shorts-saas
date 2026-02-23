@@ -124,3 +124,53 @@ export const profileNameSchema = z.object({
     .min(1, "Enter a display name")
     .max(80, "Keep the name under 80 characters"),
 });
+
+export const cloudinaryCredentialsSchema = z.object({
+  cloud_name: z
+    .string()
+    .trim()
+    .min(1, "Enter your Cloudinary cloud name")
+    .max(100)
+    .regex(
+      /^[A-Za-z0-9_-]+$/,
+      "Use the cloud name only, not a URL",
+    ),
+  api_key: z
+    .string()
+    .trim()
+    .min(1, "Enter your Cloudinary API key")
+    .max(200),
+  // Empty keeps the stored secret when one already exists.
+  api_secret: z.string().trim().max(400).optional().default(""),
+});
+
+export const renderWebhookSchema = z.object({
+  voice_id: z.string().uuid(),
+  status: z.enum(["rendered", "failed"]),
+  // A Cloudinary URL in remote mode, an absolute path in local mode. The route
+  // validates it against the voice's storage mode before saving.
+  video_url: z.string().trim().min(1).nullable().optional(),
+  duration_seconds: z.number().nonnegative().nullable().optional(),
+  error: z.string().nullable().optional(),
+});
+
+export const publishResultSchema = z.object({
+  buffer_channel_id: z.string().trim().min(1).max(200),
+  buffer_post_id: z.string().trim().max(200).nullable().optional(),
+  status: z.enum(["scheduled", "publishing", "published", "failed"]),
+  error: z.string().nullable().optional(),
+});
+
+export const publishWebhookSchema = z.object({
+  voice_id: z.string().uuid(),
+  status: z
+    .enum(["scheduled", "publishing", "partial", "published", "failed"])
+    .optional(),
+  buffer_post_id: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+  results: z.array(publishResultSchema).max(20).optional(),
+});
+
+export const retryVoiceSchema = z.object({
+  createRun: z.boolean().default(true),
+});
