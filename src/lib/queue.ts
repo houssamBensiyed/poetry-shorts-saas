@@ -44,3 +44,40 @@ export function createRedisConnection() {
     retryStrategy: (times) => Math.min(times * 500, 5_000),
   });
 }
+
+/** Bounded connection for producers, so API requests fail instead of hanging. */
+function createProducerConnection() {
+  return new IORedis(redisUrl(), {
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: false,
+    connectTimeout: 3_000,
+    retryStrategy: (times) => Math.min(times * 500, 3_000),
+  });
+}
+
+export function getQueue() {
+  if (!globalForQueue.queue) {
+    const connection = createProducerConnection();
+    globalForQueue.queueConnection = connection;
+    globalForQueue.queue = new Queue(QUEUE_NAME, { connection });
+  }
+  return globalForQueue.queue;
+}
+
+export async function enqueueRun(runId: string) {
+  const queue = getQueue();
+  return withTimeout(
+    queue.add(
+      JOB_NAME,
+      { runId },
+      {
+        jobId: runId,
+        attempts: 1,
+        removeOnComplete: 200,
+        removeOnFail: 200,
+      },
+    ),
+    5_000,
+    "Redis did not accept the queue job in time",
+  );
+}
