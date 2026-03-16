@@ -168,3 +168,78 @@ export async function applyDestinationOutcomes(
         });
         continue;
       }
+
+      const status = mergePublishStatus(existing.status, outcome.status);
+      await tx.voicePublish.update({
+        where: { id: existing.id },
+        data: {
+          status,
+          buffer_post_id:
+            outcome.bufferPostId ?? existing.buffer_post_id ?? null,
+          error_message:
+            status === "failed"
+              ? outcome.error ?? existing.error_message ?? "Buffer error"
+              : null,
+          published_at:
+            outcome.publishedAt ??
+            existing.published_at ??
+            (status === "published" ? new Date() : null),
+          external_url: outcome.externalUrl ?? existing.external_url ?? null,
+          last_synced_at: outcome.syncedAt ?? new Date(),
+        },
+      });
+    }
+
+    return syncVoiceStatusTx(tx, voiceId);
+  });
+}
+
+/**
+ * Turn Project 03's per-platform results into database rows. Results are
+ * matched to the channel's destinations by Buffer channel ID.
+ */
+export async function recordPublishResults(
+  voiceId: string,
+  results: RemotePublishResult[],
+) {
+  if (results.length === 0) return null;
+
+  const voice = await prisma.voice.findUnique({
+    where: { id: voiceId },
+    select: {
+      id: true,
+      status: true,
+      scheduled_at: true,
+      channel: {
+        select: {
+          destinations: { select: { id: true, buffer_channel_id: true } },
+        },
+      },
+    },
+  });
+  if (!voice) return null;
+
+  const byBufferId = new Map(
+    voice.channel.destinations.map((destination) => [
+      destination.buffer_channel_id,
+      destination.id,
+    ]),
+  );
+
+  const outcomes: DestinationOutcome[] = [];
+  for (const result of results) {
+    const destinationId = byBufferId.get(result.buffer_channel_id);
+    if (!destinationId) continue;
+    outcomes.push({
+      destinationId,
+      status: result.status,
+      bufferPostId: result.buffer_post_id,
+      error: result.error ?? null,
+      scheduledAt: voice.scheduled_at ?? undefined,
+      publishedAt: result.status === "published" ? new Date() : null,
+      syncedAt: new Date(),
+    });
+  }
+
+  return applyDestinationOutcomes(voiceId, outcomes);
+}
