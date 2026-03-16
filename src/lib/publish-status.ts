@@ -77,3 +77,94 @@ async function syncVoiceStatusTx(
   if (!voice || voice.publishes.length === 0) return null;
   // A retried or download-only voice keeps its pipeline status.
   if (voice.status === "completed" || voice.status === "queued") return null;
+
+  const next = aggregateVoiceStatus(
+    voice.publishes.map((item) => item.status),
+  );
+  if (!next) return null;
+  // Never move a voice backwards from a finished state.
+  if (voice.status === "published" && next !== "published") return voice.status;
+
+  const failures = voice.publishes
+    .filter((item) => item.status === "failed" && item.error_message)
+    .map((item) => item.error_message as string);
+  const failedCount = voice.publishes.filter(
+    (item) => item.status === "failed",
+  ).length;
+  const postId =
+    voice.publishes.find((item) => item.buffer_post_id)?.buffer_post_id ?? null;
+
+  const errorMessage =
+    next === "failed"
+      ? failures[0] ?? "Buffer could not publish this voice"
+      : next === "partial"
+        ? `${failedCount} of ${voice.publishes.length} destinations failed${
+            failures[0] ? `: ${failures[0]}` : ""
+          }`
+        : null;
+
+  await tx.voice.update({
+    where: { id: voice.id },
+    data: {
+      status: next,
+      buffer_post_id: postId,
+      error_message: errorMessage,
+      last_synced_at: new Date(),
+    },
+  });
+
+  return next;
+}
+
+/**
+ * Store results for one voice, one row per destination, then recalculate the
+ * voice status.
+ *
+ * The worker stores the HTTP response and Project 03 also sends a callback, so
+ * both can arrive at the same moment. A Postgres advisory lock serializes the
+ * read/merge/write for one voice across both processes. Each destination is a
+ * single row, so replaying the same results is safe.
+ */
+export async function applyDestinationOutcomes(
+  voiceId: string,
+  outcomes: DestinationOutcome[],
+) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${voiceId}))`;
+
+    const voice = await tx.voice.findUnique({
+      where: { id: voiceId },
+      select: { id: true, scheduled_at: true },
+    });
+    if (!voice) return null;
+
+    for (const outcome of outcomes) {
+      const existing = await tx.voicePublish.findUnique({
+        where: {
+          voiceId_destinationId: {
+            voiceId,
+            destinationId: outcome.destinationId,
+          },
+        },
+      });
+
+      const scheduledAt =
+        outcome.scheduledAt ?? voice.scheduled_at ?? new Date();
+
+      if (!existing) {
+        await tx.voicePublish.create({
+          data: {
+            voiceId,
+            destinationId: outcome.destinationId,
+            status: outcome.status,
+            buffer_post_id: outcome.bufferPostId ?? null,
+            error_message:
+              outcome.status === "failed" ? outcome.error ?? null : null,
+            scheduled_at: scheduledAt,
+            published_at: outcome.publishedAt ?? null,
+            external_url: outcome.externalUrl ?? null,
+            last_synced_at: outcome.syncedAt ?? new Date(),
+          },
+        });
+        continue;
+      }
