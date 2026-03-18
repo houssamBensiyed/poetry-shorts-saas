@@ -82,3 +82,91 @@ async function uploaderFetch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export type RemoteOrganization = { id: string; name: string };
+
+export type RemoteDestination = {
+  id: string;
+  name: string;
+  displayName: string | null;
+  service: string;
+  avatar: string | null;
+  isDisconnected: boolean;
+  isLocked: boolean;
+  isQueuePaused: boolean;
+};
+
+export type RemotePublishResult = {
+  buffer_channel_id: string;
+  buffer_post_id?: string | null;
+  status: "scheduled" | "publishing" | "published" | "failed";
+  error?: string | null;
+};
+
+export type RemoteStatusResult = {
+  buffer_post_id: string;
+  // null means Project 03 could not read the status (network or token error).
+  status: "scheduled" | "publishing" | "published" | "failed" | null;
+  buffer_status?: string | null;
+  due_at?: string | null;
+  published_at?: string | null;
+  external_url?: string | null;
+  error?: string | null;
+};
+
+export async function fetchOrganizations(token: string) {
+  const data = await uploaderFetch<{ organizations: RemoteOrganization[] }>(
+    "/api/v1/buffer/organizations",
+    { buffer_access_token: token },
+  );
+  return data.organizations ?? [];
+}
+
+export async function fetchPlatformDestinations(
+  token: string,
+  organizationId: string,
+) {
+  const data = await uploaderFetch<{ channels: RemoteDestination[] }>(
+    "/api/v1/buffer/channels",
+    { buffer_access_token: token, organization_id: organizationId },
+  );
+  return data.channels ?? [];
+}
+
+export type PublishDestinationPayload = {
+  buffer_channel_id: string;
+  service: string;
+  youtube_category_id?: string | null;
+};
+
+export async function publishVoice(options: {
+  token: string;
+  voiceId: string;
+  videoUrl: string;
+  title: string;
+  description: string;
+  scheduledAt: Date;
+  destinations: PublishDestinationPayload[];
+  callbackUrl?: string;
+}) {
+  return uploaderFetch<{
+    voice_id: string;
+    status: string;
+    results: RemotePublishResult[];
+  }>("/api/v1/publish", {
+    voice_id: options.voiceId,
+    video_url: options.videoUrl,
+    title: options.title,
+    description: options.description,
+    scheduled_at: options.scheduledAt.toISOString(),
+    buffer_access_token: options.token,
+    destinations: options.destinations,
+    ...(options.callbackUrl ? { callback_url: options.callbackUrl } : {}),
+  });
+}
+
+export async function fetchPostStatuses(token: string, postIds: string[]) {
+  const data = await uploaderFetch<{ results: RemoteStatusResult[] }>(
+    "/api/v1/publish/status",
+    { buffer_access_token: token, buffer_post_ids: postIds },
+  );
+  return data.results ?? [];
+}
