@@ -92,3 +92,101 @@ export async function syncPublishStatuses(options: {
   let checked = 0;
   let updated = 0;
   const errors: string[] = [];
+
+  for (const group of groups.values()) {
+    let token: string;
+    try {
+      token = decryptToken(group.token);
+    } catch {
+      errors.push(`Channel "${group.name}": stored token cannot be decrypted`);
+      continue;
+    }
+
+    const postIds = [
+      ...new Set(
+        group.voices.flatMap((voice) =>
+          voice.publishes
+            .map((publish) => publish.buffer_post_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ),
+    ];
+    if (postIds.length === 0) continue;
+
+    let statuses;
+    try {
+      // Project 03 caps `buffer_post_ids` at 50 per request.
+      statuses = [];
+      for (let index = 0; index < postIds.length; index += 50) {
+        const batch = await fetchPostStatuses(
+          token,
+          postIds.slice(index, index + 50),
+        );
+        statuses.push(...batch);
+      }
+    } catch (error) {
+      errors.push(
+        `Channel "${group.name}": ${
+          error instanceof Error ? error.message : "status request failed"
+        }`,
+      );
+      continue;
+    }
+
+    const byPostId = new Map(
+      statuses.map((status) => [status.buffer_post_id, status]),
+    );
+
+    for (const voice of group.voices) {
+      checked += voice.publishes.length;
+      const outcomes = voice.publishes.flatMap((publish) => {
+        if (!publish.buffer_post_id) return [];
+        const remote = byPostId.get(publish.buffer_post_id);
+        if (!remote) return [];
+        // A status-read error is reported but never saved as a failure.
+        if (remote.status == null) {
+          if (remote.error) {
+            errors.push(
+              `Voice ${voice.id} (${publish.buffer_post_id}): ${remote.error}`,
+            );
+          }
+          return [];
+        }
+        return [
+          {
+            destinationId: publish.destinationId,
+            status: remote.status,
+            bufferPostId: publish.buffer_post_id,
+            error: remote.error ?? null,
+            scheduledAt: voice.scheduled_at ?? undefined,
+            publishedAt: remote.published_at
+              ? new Date(remote.published_at)
+              : null,
+            externalUrl: remote.external_url ?? null,
+            syncedAt: new Date(),
+          },
+        ];
+      });
+
+      if (outcomes.length === 0) continue;
+      try {
+        await applyDestinationOutcomes(voice.id, outcomes);
+        updated += 1;
+      } catch (error) {
+        errors.push(
+          `Voice ${voice.id}: ${
+            error instanceof Error ? error.message : "could not save status"
+          }`,
+        );
+      }
+    }
+  }
+
+  return {
+    checked,
+    updated,
+    skipped,
+    errors,
+    checkedAt: new Date().toISOString(),
+  };
+}
