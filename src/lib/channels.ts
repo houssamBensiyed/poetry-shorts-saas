@@ -32,3 +32,46 @@ export const channelSelect = {
   },
   _count: { select: { voices: true } },
 } as const;
+
+export function publicChannel<T extends { buffer_access_token: string }>(
+  channel: T,
+) {
+  const { buffer_access_token, ...rest } = channel;
+  return {
+    ...rest,
+    hasBufferToken: Boolean(buffer_access_token),
+    language_label: languageLabel(
+      (rest as { language_group?: string }).language_group ?? "en",
+    ),
+  };
+}
+
+/** A destination is usable only when it is enabled and Buffer says it is healthy. */
+export function destinationReady(destination: {
+  enabled: boolean;
+  is_disconnected: boolean;
+  is_locked: boolean;
+  is_queue_paused: boolean;
+}) {
+  return (
+    destination.enabled &&
+    !destination.is_disconnected &&
+    !destination.is_locked &&
+    !destination.is_queue_paused
+  );
+}
+
+export function destinationStatusLabel(destination: {
+  enabled: boolean;
+  is_disconnected: boolean;
+  is_locked: boolean;
+  is_queue_paused: boolean;
+}) {
+  if (destination.is_disconnected) return "Disconnected";
+  if (destination.is_locked) return "Locked";
+  if (destination.is_queue_paused) return "Queue paused";
+  if (!destination.enabled) return "Off";
+  return "Active";
+}
+
+export { normalizeLanguageGroup };
