@@ -70,3 +70,72 @@ export async function PATCH(
     },
   });
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } },
+) {
+  const auth = await requireAdminApi();
+  if ("error" in auth) return auth.error;
+  if (!isUuid(params.id)) return jsonError("User not found", 404);
+
+  if (params.id === auth.user.id) {
+    return jsonError("You cannot delete your own admin account", 409);
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: params.id },
+    select: { id: true },
+  });
+  if (!target) return jsonError("User not found", 404);
+
+  const blocker = await prisma.voice.findFirst({
+    where: {
+      userId: target.id,
+      OR: [
+        { status: { in: [...ACTIVE_STATUSES] } },
+        { queueRun: { status: { in: [...ACTIVE_STATUSES] } } },
+        {
+          publishes: {
+            some: {
+              buffer_post_id: { not: null },
+              status: { not: "failed" },
+            },
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (blocker) {
+    return jsonError(
+      "This user still has active runs or posts in Buffer. Finish or remove them before deleting the account.",
+      409,
+    );
+  }
+
+  const localVoices = await prisma.voice.findMany({
+    where: { userId: target.id, storage_mode: "LOCAL" },
+    select: { audio_url: true, rendered_video_url: true },
+  });
+
+  try {
+    await prisma.user.delete({ where: { id: target.id } });
+  } catch (error) {
+    console.error("Could not delete user", error);
+    return jsonError(errorMessage(error), 500);
+  }
+
+  for (const voice of localVoices) {
+    for (const stored of [voice.audio_url, voice.rendered_video_url]) {
+      if (!stored) continue;
+      try {
+        await unlink(await resolveLocalFile(stored, { mustExist: false }));
+      } catch {
+        // Best effort cleanup.
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true });
+}
