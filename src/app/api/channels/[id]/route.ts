@@ -93,3 +93,103 @@ export async function PUT(
           });
         }
       }
+
+      return tx.channel.update({
+        where: { id: current.id },
+        data: {
+          ...fields,
+          ...(language
+            ? {
+                language,
+                language_group: normalizeLanguageGroup(language),
+              }
+            : {}),
+          ...(token ? { buffer_access_token: encryptToken(token) } : {}),
+        },
+        select: channelSelect,
+      });
+    });
+
+    return NextResponse.json({ channel: publicChannel(channel) });
+  } catch (error) {
+    console.error("Could not update channel", error);
+    return jsonError(errorMessage(error), 500);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } },
+) {
+  const user = await getSessionUser();
+  if (!user) return jsonError("Unauthorized", 401);
+  if (!isUuid(params.id)) return jsonError("Channel not found", 404);
+
+  const channel = await prisma.channel.findFirst({
+    where: { id: params.id, userId: user.id },
+    select: {
+      id: true,
+      voices: {
+        select: {
+          id: true,
+          status: true,
+          storage_mode: true,
+          audio_url: true,
+          rendered_video_url: true,
+          queueRun: { select: { status: true } },
+          publishes: {
+            where: {
+              buffer_post_id: { not: null },
+              status: { not: "failed" },
+            },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+  if (!channel) return jsonError("Channel not found", 404);
+
+  if (channel.voices.some((voice) => voice.publishes.length > 0)) {
+    return jsonError(
+      "This channel has posts in Buffer. Remove those posts in Buffer before deleting the channel.",
+      409,
+    );
+  }
+  if (
+    channel.voices.some(
+      (voice) =>
+        (ACTIVE_STATUSES as readonly string[]).includes(voice.status) ||
+        (voice.queueRun &&
+          (ACTIVE_STATUSES as readonly string[]).includes(
+            voice.queueRun.status,
+          )),
+    )
+  ) {
+    return jsonError(
+      "A queue run is still processing voices in this channel. Wait for it to finish before deleting the channel.",
+      409,
+    );
+  }
+
+  const localFiles = channel.voices.flatMap((voice) =>
+    voice.storage_mode === "LOCAL"
+      ? [voice.audio_url, voice.rendered_video_url].filter(
+          (value): value is string => Boolean(value),
+        )
+      : [],
+  );
+
+  await prisma.channel.delete({ where: { id: channel.id } });
+
+  for (const stored of localFiles) {
+    try {
+      await unlink(await resolveLocalFile(stored, { mustExist: false }));
+    } catch {
+      // Best effort: a missing file must not block the delete.
+    }
+  }
+
+  return NextResponse.json({ ok: true });
+}
