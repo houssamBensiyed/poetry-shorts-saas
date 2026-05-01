@@ -76,3 +76,86 @@ export async function POST(
     const known = new Set(channel.destinations.map((item) => item.buffer_channel_id));
     let created = 0;
     let updated = 0;
+
+    await prisma.$transaction(async (tx) => {
+      for (const destination of remote) {
+        const exists = known.has(destination.id);
+        await tx.channelDestination.upsert({
+          where: {
+            channelId_buffer_channel_id: {
+              channelId: channel.id,
+              buffer_channel_id: destination.id,
+            },
+          },
+          create: {
+            channelId: channel.id,
+            buffer_channel_id: destination.id,
+            name: destination.displayName || destination.name,
+            service: destination.service,
+            avatar: destination.avatar,
+            enabled: false,
+            is_disconnected: destination.isDisconnected,
+            is_locked: destination.isLocked,
+            is_queue_paused: destination.isQueuePaused,
+            last_synced_at: new Date(),
+          },
+          update: {
+            name: destination.displayName || destination.name,
+            service: destination.service,
+            avatar: destination.avatar,
+            is_disconnected: destination.isDisconnected,
+            is_locked: destination.isLocked,
+            is_queue_paused: destination.isQueuePaused,
+            last_synced_at: new Date(),
+          },
+        });
+        if (exists) updated += 1;
+        else created += 1;
+      }
+
+      // Platforms removed from Buffer must stop being publishable.
+      const remoteIds = new Set(remote.map((destination) => destination.id));
+      const stale = channel.destinations.filter(
+        (destination) => !remoteIds.has(destination.buffer_channel_id),
+      );
+      if (stale.length > 0) {
+        await tx.channelDestination.updateMany({
+          where: { id: { in: stale.map((destination) => destination.id) } },
+          data: {
+            enabled: false,
+            is_disconnected: true,
+            last_synced_at: new Date(),
+          },
+        });
+      }
+
+      await tx.channel.update({
+        where: { id: channel.id },
+        data: {
+          buffer_organization_id: organizationId,
+          buffer_organization_name: organizationName ?? null,
+        },
+      });
+    });
+
+    const refreshed = await prisma.channel.findUniqueOrThrow({
+      where: { id: channel.id },
+      select: channelSelect,
+    });
+
+    return NextResponse.json({
+      channel: publicChannel(refreshed),
+      created,
+      updated,
+      organization_id: organizationId,
+      organization_name: organizationName,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not refresh destinations";
+    return jsonError(
+      message,
+      error instanceof UploaderError ? error.statusCode : 502,
+    );
+  }
+}
