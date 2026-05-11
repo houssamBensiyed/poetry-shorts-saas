@@ -50,3 +50,56 @@ export async function PUT(request: Request) {
   if (!body || typeof body !== "object") {
     return jsonError("Choose an avatar or upload an image", 422);
   }
+
+  const preset = "preset" in body ? body.preset : undefined;
+  const dataUrl = "dataUrl" in body ? body.dataUrl : undefined;
+
+  if (dataUrl !== undefined) {
+    if (typeof dataUrl !== "string") {
+      return jsonError("The image is not valid", 422);
+    }
+    const match = DATA_URL.exec(dataUrl);
+    if (!match) {
+      return jsonError("Use a PNG, JPEG, or WebP image", 415);
+    }
+
+    const buffer = Buffer.from(match[2], "base64");
+    if (buffer.length === 0) {
+      return jsonError("The image is empty", 422);
+    }
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      return jsonError("The image must be 300 KB or smaller", 413);
+    }
+    const kind = imageLooksValid(buffer);
+    if (!kind || kind !== match[1]) {
+      return jsonError("The image file is not a valid PNG, JPEG, or WebP", 415);
+    }
+  } else if (typeof preset !== "string" || !isDefaultAvatar(preset)) {
+    return jsonError("Choose one of the built-in avatars", 422);
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { avatar_url: (dataUrl as string | undefined) ?? (preset as string) },
+    });
+  } catch (error) {
+    console.error("Avatar update failed", error);
+    return jsonError(errorMessage(error), 500);
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+/** Restore the deterministic built-in avatar. */
+export async function DELETE() {
+  const user = await getSessionUser();
+  if (!user) return jsonError("Unauthorized", 401);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { avatar_url: null },
+  });
+
+  return NextResponse.json({ ok: true });
+}
