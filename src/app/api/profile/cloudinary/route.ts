@@ -63,3 +63,55 @@ export async function PUT(request: Request) {
       );
     }
   }
+
+  const credentials = {
+    cloudName: parsed.data.cloud_name,
+    apiKey: parsed.data.api_key,
+    apiSecret,
+  };
+
+  const verification = await verifyCloudinaryCredentials(credentials);
+  // Status 0 is a network failure. Save anyway and report the warning so a
+  // temporary outage does not block the user.
+  if (!verification.ok && verification.status !== 0) {
+    return jsonError(verification.message, 422);
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        cloudinary_cloud_name: credentials.cloudName,
+        cloudinary_api_key: credentials.apiKey,
+        cloudinary_api_secret: encryptToken(credentials.apiSecret),
+      },
+    });
+  } catch (error) {
+    console.error("Could not save Cloudinary credentials", error);
+    return jsonError(errorMessage(error), 500);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    configured: true,
+    verified: verification.ok,
+    warning: verification.ok ? null : verification.message,
+  });
+}
+
+/** Remove the account. Uploads that need Cloudinary will ask for it again. */
+export async function DELETE() {
+  const user = await getSessionUser();
+  if (!user) return jsonError("Unauthorized", 401);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      cloudinary_cloud_name: null,
+      cloudinary_api_key: null,
+      cloudinary_api_secret: null,
+    },
+  });
+
+  return NextResponse.json({ ok: true, configured: false });
+}
