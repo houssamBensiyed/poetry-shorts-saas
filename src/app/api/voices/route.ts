@@ -91,3 +91,88 @@ export async function POST(request: Request) {
   } catch {
     return jsonError("Upload must be sent as multipart form data", 400);
   }
+
+  const parsed = voiceMetadataSchema.safeParse({
+    channelId: form.get("channelId"),
+    title: form.get("title"),
+    description: form.get("description") ?? "",
+    storage_mode: form.get("storage_mode") ?? undefined,
+    upload_to_buffer: form.get("upload_to_buffer") ?? "true",
+    reel_style: form.get("reel_style") ?? undefined,
+    scheduled_date: form.get("scheduled_date") ?? undefined,
+    scheduled_time: form.get("scheduled_time") ?? undefined,
+  });
+  if (!parsed.success) return validationError(parsed.error);
+
+  let scheduledAt: Date | null = null;
+  if (parsed.data.upload_to_buffer) {
+    if (!parsed.data.scheduled_date || !parsed.data.scheduled_time) {
+      return jsonError(
+        "Choose the publish date and the UTC time before uploading.",
+        422,
+      );
+    }
+    scheduledAt = utcDateTime(
+      parsed.data.scheduled_date,
+      parsed.data.scheduled_time,
+    );
+    if (!scheduledAt) {
+      return jsonError("The publish date or time is not valid", 422);
+    }
+    if (scheduledAt.getTime() <= Date.now()) {
+      return jsonError(
+        "The publish date and time must be in the future (UTC+0).",
+        422,
+      );
+    }
+  }
+
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return jsonError("Choose an audio file to upload", 422);
+  }
+  if (file.size === 0) {
+    return jsonError("The selected audio file is empty", 422);
+  }
+  if (file.size > MAX_AUDIO_BYTES) {
+    return jsonError("Audio files must be 50 MB or smaller", 413);
+  }
+
+  const extension = audioExtension(file.name, file.type);
+  if (!extension) {
+    return jsonError("Only .mp3 and .wav audio files are supported", 415);
+  }
+
+  const channel = await prisma.channel.findFirst({
+    where: { id: parsed.data.channelId, userId: user.id },
+    select: {
+      id: true,
+      enabled: true,
+      reel_style: true,
+      language_group: true,
+      destinations: {
+        select: {
+          id: true,
+          enabled: true,
+          is_disconnected: true,
+          is_locked: true,
+          is_queue_paused: true,
+        },
+      },
+    },
+  });
+  if (!channel) return jsonError("Channel not found", 404);
+  if (!channel.enabled) {
+    return jsonError("This channel is disabled. Enable it before uploading.", 409);
+  }
+  if (
+    parsed.data.upload_to_buffer &&
+    !channel.destinations.some(destinationReady)
+  ) {
+    return jsonError(
+      "This channel has no active Buffer destinations. Add one before uploading.",
+      409,
+    );
+  }
+
+  const storageMode = parsed.data.storage_mode ?? user.storage_mode;
