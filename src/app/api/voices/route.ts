@@ -176,3 +176,103 @@ export async function POST(request: Request) {
   }
 
   const storageMode = parsed.data.storage_mode ?? user.storage_mode;
+
+  // Remote voices are uploaded to the user's own Cloudinary account, so the
+  // account must be configured before the file is read.
+  let remoteCredentials: CloudinaryCredentials | null = null;
+  if (storageMode === "REMOTE") {
+    const account = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: cloudinaryUserSelect,
+    });
+    if (!isCloudinaryConfigured(account)) {
+      return jsonError(
+        "Cloudinary is not set up for your account. Add your cloud name, API key and API secret in Profile, then upload again.",
+        409,
+      );
+    }
+    remoteCredentials = resolveCloudinaryCredentials(account);
+    if (!remoteCredentials) {
+      return jsonError(
+        "Your saved Cloudinary secret cannot be read. Enter it again in Profile.",
+        409,
+      );
+    }
+  }
+
+  let voiceId: string | undefined;
+  let localPath: string | null = null;
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    let audioUrl: string;
+    let duration: number | null = null;
+
+    if (storageMode === "LOCAL") {
+      voiceId = randomUUID();
+      localPath = localVoicePath(voiceId, extension);
+      await mkdir(path.dirname(localPath), { recursive: true });
+      await writeFile(localPath, buffer, { flag: "wx" });
+      audioUrl = localPath;
+    } else {
+      if (!remoteCredentials) {
+        throw new Error("Cloudinary is not set up for your account");
+      }
+      const uploaded = await uploadAudio(buffer, file.name, remoteCredentials);
+      audioUrl = uploaded.url;
+      duration = uploaded.duration;
+    }
+
+    const voice = await prisma.voice.create({
+      data: {
+        ...(voiceId ? { id: voiceId } : {}),
+        userId: user.id,
+        channelId: channel.id,
+        title: parsed.data.title,
+        description: parsed.data.description,
+        audio_url: audioUrl,
+        storage_mode: storageMode,
+        upload_to_buffer: parsed.data.upload_to_buffer,
+        reel_style:
+          parsed.data.reel_style ?? channel.reel_style ?? ("A" as const),
+        duration_seconds: duration,
+        status: "queued",
+        scheduled_at: scheduledAt,
+      },
+      include: voiceInclude,
+    });
+
+    if (scheduledAt) {
+      const minutes = timeToMinutes(
+        scheduledAt.toISOString().slice(11, 16),
+      );
+      if (minutes !== null) {
+        // Remembering the time is a convenience; a failure here must not make
+        // the upload look failed after the voice was already stored.
+        await recordPostingTime(
+          user.id,
+          channel.language_group,
+          minutes,
+        ).catch((error) => {
+          console.warn("Could not record the posting time", error);
+        });
+      }
+    }
+
+    return NextResponse.json({ voice: publicVoice(voice) }, { status: 201 });
+  } catch (error) {
+    if (localPath) {
+      await unlink(localPath).catch(() => undefined);
+    }
+    console.error("Voice upload failed", error);
+    const message = errorMessage(error);
+    const misconfigured =
+      message.includes("Cloudinary is not configured") ||
+      message.includes("LOCAL_MEDIA_ROOT") ||
+      message.includes("Local storage is not configured");
+    return jsonError(
+      `Could not upload the voice: ${message}`,
+      misconfigured ? 503 : 500,
+    );
+  }
+}
