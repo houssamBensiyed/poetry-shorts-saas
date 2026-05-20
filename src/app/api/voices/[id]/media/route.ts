@@ -68,3 +68,73 @@ export async function GET(
   } catch {
     return jsonError("The local media file is missing", 404);
   }
+
+  const info = await stat(file).catch(() => null);
+  if (!info) return jsonError("The local media file is missing", 404);
+  const extension = path.extname(file).toLowerCase();
+  const contentType = CONTENT_TYPES[extension] ?? "application/octet-stream";
+  const disposition = `${download ? "attachment" : "inline"}; filename="${path.basename(file)}"`;
+
+  // Video elements seek with byte ranges. Without a 206 response Safari will
+  // not play the file at all, and Chrome cannot scrub.
+  const range = request.headers.get("range");
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (match) {
+      const [, rawStart, rawEnd] = match;
+      let start = rawStart ? Number(rawStart) : 0;
+      let end = rawEnd ? Number(rawEnd) : info.size - 1;
+      if (!rawStart && rawEnd) {
+        // Suffix range: the last N bytes.
+        const length = Number(rawEnd);
+        start = Math.max(0, info.size - length);
+        end = info.size - 1;
+      }
+      if (
+        Number.isFinite(start) &&
+        Number.isFinite(end) &&
+        start >= 0 &&
+        end >= start &&
+        start < info.size
+      ) {
+        end = Math.min(end, info.size - 1);
+        const stream = Readable.toWeb(
+          createReadStream(file, { start, end }),
+        ) as unknown as ReadableStream;
+        return new NextResponse(stream, {
+          status: 206,
+          headers: {
+            "Content-Type": contentType,
+            "Content-Length": String(end - start + 1),
+            "Content-Range": `bytes ${start}-${end}/${info.size}`,
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": disposition,
+            "Cache-Control": "private, no-store",
+          },
+        });
+      }
+
+      return new NextResponse(null, {
+        status: 416,
+        headers: {
+          "Content-Range": `bytes */${info.size}`,
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
+  }
+
+  const stream = Readable.toWeb(
+    createReadStream(file),
+  ) as unknown as ReadableStream;
+
+  return new NextResponse(stream, {
+    headers: {
+      "Content-Type": contentType,
+      "Content-Length": String(info.size),
+      "Accept-Ranges": "bytes",
+      "Content-Disposition": disposition,
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
