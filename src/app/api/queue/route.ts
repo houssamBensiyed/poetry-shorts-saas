@@ -55,3 +55,58 @@ export async function GET() {
     }),
     prisma.voice.count({ where: { userId: user.id, status: "queued" } }),
   ]);
+
+  const currentVoice =
+    activeRun?.voices.find((voice) =>
+      ["processing", "submitting"].includes(voice.status),
+    ) ?? null;
+
+  return NextResponse.json({
+    activeRun: activeRun
+      ? {
+          ...activeRun,
+          voices: activeRun.voices.map(publicVoice),
+          currentVoice: currentVoice ? publicVoice(currentVoice) : null,
+          progress: progressOf(activeRun.total_items, activeRun.completed_items),
+        }
+      : null,
+    recentRuns: recentRuns.map((run) => ({
+      id: run.id,
+      status: run.status,
+      total_items: run.total_items,
+      completed_items: run.completed_items,
+      failed_items: run.voices.filter((voice) => voice.status === "failed").length,
+      createdAt: run.createdAt,
+      updatedAt: run.updatedAt,
+      progress: progressOf(run.total_items, run.completed_items),
+    })),
+    queuedCount,
+  });
+}
+
+export async function POST() {
+  const user = await getSessionUser();
+  if (!user) return jsonError("Unauthorized", 401);
+
+  try {
+    const run = await startQueueRun(user.id);
+    return NextResponse.json(
+      {
+        run: {
+          id: run.id,
+          status: run.status,
+          total_items: run.total_items,
+          completed_items: run.completed_items,
+        },
+      },
+      { status: 202 },
+    );
+  } catch (error) {
+    if (error instanceof QueueEnqueueError) {
+      return jsonError(error.message, 503);
+    }
+    if (error instanceof QueueRunError) return jsonError(error.message, 409);
+    console.error("Could not start queue run", error);
+    return jsonError("Could not start the queue run", 500);
+  }
+}
