@@ -51,3 +51,43 @@ export async function POST(request: Request) {
         422,
       );
     }
+
+    // Apply only while the voice is still rendering. A failed voice with no
+    // stored reel is accepted as well, because the worker may have timed out
+    // before this callback arrived. Finished/published voices are never
+    // regressed.
+    const updated = await prisma.voice.updateMany({
+      where: {
+        id: voice.id,
+        OR: [
+          { status: "processing" },
+          { status: "failed", rendered_video_url: null },
+        ],
+      },
+      data: {
+        status: "rendered",
+        rendered_video_url: parsed.data.video_url,
+        duration_seconds: parsed.data.duration_seconds ?? null,
+        error_message: null,
+      },
+    });
+
+    return NextResponse.json(
+      updated.count === 0 ? { ok: true, ignored: true } : { ok: true },
+    );
+  }
+
+  // A failure callback only applies while the voice is still rendering. Late or
+  // duplicate failures must not overwrite a rendered or scheduled voice.
+  const updated = await prisma.voice.updateMany({
+    where: { id: voice.id, status: "processing" },
+    data: {
+      status: "failed",
+      error_message: parsed.data.error ?? "Rendering failed",
+    },
+  });
+
+  return NextResponse.json(
+    updated.count === 0 ? { ok: true, ignored: true } : { ok: true },
+  );
+}
