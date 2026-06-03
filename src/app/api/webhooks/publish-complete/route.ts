@@ -43,3 +43,49 @@ export async function POST(request: Request) {
   if (voice.status === "queued" || voice.status === "completed") {
     return NextResponse.json({ ok: true, ignored: true });
   }
+
+  if (parsed.data.results?.length) {
+    const status = await recordPublishResults(voice.id, parsed.data.results);
+    return NextResponse.json({ ok: true, status });
+  }
+
+  if (!parsed.data.status) {
+    return jsonError("Provide `results` or `status`", 422);
+  }
+  if (parsed.data.status === "partial") {
+    return jsonError(
+      "Partial publishes must include per-destination `results`.",
+      422,
+    );
+  }
+  // Legacy single-result callback: only meaningful when the voice has exactly
+  // one destination. With several, one result cannot describe all of them.
+  if (voice.publishes.length === 0) {
+    return NextResponse.json({ ok: true, ignored: true });
+  }
+  if (voice.publishes.length > 1) {
+    return jsonError(
+      "This voice has multiple destinations. Send per-destination `results`.",
+      422,
+    );
+  }
+
+  const status = await recordPublishResults(
+    voice.id,
+    voice.publishes.map((publish) => ({
+      buffer_channel_id: publish.destination.buffer_channel_id,
+      buffer_post_id: parsed.data.buffer_post_id ?? null,
+      status:
+        parsed.data.status === "publishing"
+          ? "publishing"
+          : parsed.data.status === "scheduled"
+            ? "scheduled"
+            : parsed.data.status === "published"
+              ? "published"
+              : "failed",
+      error: parsed.data.error ?? null,
+    })),
+  );
+
+  return NextResponse.json({ ok: true, status });
+}
