@@ -54,3 +54,57 @@ export function DashboardNav({
       </Link>
     );
   }
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-border bg-[hsl(var(--nav)/0.85)] backdrop-blur-xl backdrop-saturate-150">
+      <div className="mx-auto w-full max-w-[1180px] px-4 sm:px-6">
+        <div className="flex h-14 items-center gap-5">
+          <Brand />
+
+          <nav
+            aria-label="Primary"
+            className="hidden items-center gap-0.5 md:flex"
+          >
+            {links.map((link) => (
+              <NavLink key={link.href} {...link} />
+            ))}
+            {role === "ADMIN" ? (
+              <>
+                <span aria-hidden className="mx-2 h-4 w-px bg-border" />
+                {adminLinks.map((link) => (
+                  <NavLink key={link.href} {...link} />
+                ))}
+              </>
+            ) : null}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            <UserMenu
+              email={email}
+              name={name}
+              role={role}
+              avatarUrl={avatarUrl}
+            />
+          </div>
+        </div>
+
+        <nav
+          aria-label="Primary"
+          className="no-scrollbar -mx-1 flex items-center gap-0.5 overflow-x-auto px-1 pb-2 md:hidden"
+        >
+          {links.map((link) => (
+            <NavLink key={link.href} {...link} />
+          ))}
+          {role === "ADMIN" ? (
+            <>
+              <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-border" />
+              {adminLinks.map((link) => (
+                <NavLink key={link.href} {...link} />
+              ))}
+            </>
+          ) : null}
+        </nav>
+      </div>
+    </header>
+  );
+}
