@@ -267,3 +267,142 @@ export function ChannelManager() {
     setSelection({});
     setLoadingPlatforms(false);
   }
+
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyForm);
+    resetDiscovery();
+    setModalOpen(true);
+    setError(null);
+  }
+
+  function openEdit(channel: Channel) {
+    setEditing(channel);
+    setForm({
+      name: channel.name,
+      language: channel.language,
+      reel_style: channel.reel_style,
+      buffer_access_token: "",
+      organizationId: channel.buffer_organization_id ?? "",
+      organizationName: channel.buffer_organization_name ?? "",
+      enabled: channel.enabled,
+    });
+    resetDiscovery();
+    setModalOpen(true);
+    setError(null);
+  }
+
+  async function loadOrganizations() {
+    setLoadingOrganizations(true);
+    setError(null);
+    setOrganizations([]);
+    platformRequest.current += 1;
+    setRemote([]);
+    setSelection({});
+    try {
+      const data = await apiFetch<{
+        organizations: RemoteOrganization[];
+        selected_organization_id?: string;
+      }>("/api/buffer/organizations", {
+        method: "POST",
+        body: JSON.stringify({
+          buffer_access_token: form.buffer_access_token.trim() || undefined,
+          channelId: editing?.id,
+        }),
+      });
+      setOrganizations(data.organizations);
+      const selected =
+        form.organizationId ||
+        data.selected_organization_id ||
+        (data.organizations.length === 1 ? data.organizations[0].id : "");
+      if (selected) {
+        const organization = data.organizations.find(
+          (item) => item.id === selected,
+        );
+        setForm((current) => ({
+          ...current,
+          organizationId: selected,
+          organizationName: organization?.name ?? current.organizationName,
+        }));
+        await loadPlatforms(selected);
+      }
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setLoadingOrganizations(false);
+    }
+  }
+
+  async function loadPlatforms(organizationId: string) {
+    if (!organizationId) return;
+    const request = platformRequest.current + 1;
+    platformRequest.current = request;
+    setLoadingPlatforms(true);
+    setError(null);
+    // Never leave platforms from another organization selectable.
+    setRemote([]);
+    setSelection({});
+    try {
+      const data = await apiFetch<{ channels: RemoteDestination[] }>(
+        "/api/buffer/channels",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: organizationId,
+            buffer_access_token: form.buffer_access_token.trim() || undefined,
+            channelId: editing?.id,
+          }),
+        },
+      );
+      if (request !== platformRequest.current) return;
+      setRemote(data.channels);
+
+      const existing = new Map(
+        (editing?.destinations ?? []).map((destination) => [
+          destination.buffer_channel_id,
+          destination,
+        ]),
+      );
+      const next: Record<string, Selection> = {};
+      for (const destination of data.channels) {
+        const saved = existing.get(destination.id);
+        next[destination.id] = {
+          selected: saved ? saved.enabled : false,
+          category:
+            saved?.youtube_category_id ?? DEFAULT_YOUTUBE_CATEGORY_ID,
+        };
+      }
+      setSelection(next);
+    } catch (err) {
+      if (request === platformRequest.current) {
+        setRemote([]);
+        setSelection({});
+        setError(errorText(err));
+      }
+    } finally {
+      if (request === platformRequest.current) {
+        setLoadingPlatforms(false);
+      }
+    }
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+
+    try {
+      const destinations = remote
+        .filter((destination) => selection[destination.id]?.selected)
+        .map((destination) => ({
+          buffer_channel_id: destination.id,
+          name: destination.displayName || destination.name,
+          service: destination.service,
+          avatar: destination.avatar,
+          enabled: true,
+          youtube_category_id:
+            destination.service === "youtube"
+              ? selection[destination.id]?.category ??
+                DEFAULT_YOUTUBE_CATEGORY_ID
+              : null,
+        }));
