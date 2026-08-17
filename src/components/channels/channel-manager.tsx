@@ -406,3 +406,136 @@ export function ChannelManager() {
                 DEFAULT_YOUTUBE_CATEGORY_ID
               : null,
         }));
+
+      const platformsLoaded = remote.length > 0;
+      if (!platformsLoaded && !editing) {
+        setError("Load your Buffer organizations and select at least one platform.");
+        setSaving(false);
+        return;
+      }
+      if (platformsLoaded && destinations.length === 0) {
+        setError("Select at least one Buffer destination.");
+        setSaving(false);
+        return;
+      }
+
+      const body: Record<string, unknown> = {
+        name: form.name,
+        language: form.language,
+        reel_style: form.reel_style,
+        enabled: form.enabled,
+        buffer_organization_id: form.organizationId || null,
+        buffer_organization_name: form.organizationName || null,
+      };
+      // Only send destinations when they were actually loaded. Sending an
+      // empty list after a rename would disable every existing platform.
+      if (platformsLoaded) {
+        body.destinations = destinations;
+      }
+      if (form.buffer_access_token.trim()) {
+        body.buffer_access_token = form.buffer_access_token.trim();
+      }
+
+      if (editing) {
+        await apiFetch(`/api/channels/${editing.id}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        });
+        setNotice(`Channel “${form.name}” updated.`);
+      } else {
+        await apiFetch("/api/channels", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        setNotice(`Channel “${form.name}” created.`);
+      }
+
+      setModalOpen(false);
+      setEditing(null);
+      resetDiscovery();
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggle(channel: Channel) {
+    setError(null);
+    try {
+      await apiFetch(`/api/channels/${channel.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled: !channel.enabled }),
+      });
+      setNotice(
+        `Channel “${channel.name}” ${channel.enabled ? "disabled" : "enabled"}.`,
+      );
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function refresh(channel: Channel) {
+    setBusyId(channel.id);
+    setError(null);
+    try {
+      const data = await apiFetch<{
+        created: number;
+        updated: number;
+      }>(`/api/channels/${channel.id}/refresh-destinations`, {
+        method: "POST",
+      });
+      setNotice(
+        `Platforms refreshed: ${data.created} new, ${data.updated} updated. New platforms start switched off.`,
+      );
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(channel: Channel) {
+    if (
+      !window.confirm(
+        `Delete “${channel.name}”? Its ${channel._count.voices} voice(s) and publish history will be removed.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      await apiFetch(`/api/channels/${channel.id}`, { method: "DELETE" });
+      setNotice(`Channel “${channel.name}” deleted.`);
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function addTime() {
+    if (!timesGroup || !newTime) return;
+    setError(null);
+    try {
+      await apiFetch("/api/posting-times", {
+        method: "POST",
+        body: JSON.stringify({
+          group: timesGroup.language_group,
+          time: newTime,
+        }),
+      });
+      setNewTime("");
+      await load();
+      const refreshed = await apiFetch<{ groups: Group[] }>("/api/channels");
+      setTimesGroup(
+        refreshed.groups.find(
+          (group) => group.language_group === timesGroup.language_group,
+        ) ?? null,
+      );
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
