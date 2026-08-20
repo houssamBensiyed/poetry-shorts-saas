@@ -539,3 +539,140 @@ export function ChannelManager() {
       setError(errorText(err));
     }
   }
+
+  async function deleteTime(time: PostingTime) {
+    if (!timesGroup) return;
+    setError(null);
+    try {
+      await apiFetch(`/api/posting-times/${time.id}`, { method: "DELETE" });
+      await load();
+      const refreshed = await apiFetch<{ groups: Group[] }>("/api/channels");
+      setTimesGroup(
+        refreshed.groups.find(
+          (group) => group.language_group === timesGroup.language_group,
+        ) ?? null,
+      );
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="page-title">Channels</h1>
+          <p className="page-lede">
+            Pick a language, then manage the channels that publish in it.
+          </p>
+        </div>
+        <Button onClick={openCreate}>
+          <Plus className="h-4 w-4" /> Add channel
+        </Button>
+      </div>
+
+      {error ? <Alert tone="error">{error}</Alert> : null}
+      {notice ? <Alert tone="success">{notice}</Alert> : null}
+
+      {loading ? (
+        <Card>
+          <CardContent className="flex items-center gap-2 p-8 text-[13px] text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading channels…
+          </CardContent>
+        </Card>
+      ) : grouped.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 px-6 py-14 text-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
+              <Radio className="h-5 w-5" strokeWidth={1.8} />
+            </span>
+            <div>
+              <p className="text-[15px] font-semibold">No channels yet</p>
+              <p className="meta mx-auto mt-1 max-w-sm">
+                Add a Buffer token, choose an organization, then select the
+                platforms this channel should publish to.
+              </p>
+            </div>
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add your first channel
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid items-start gap-7 lg:grid-cols-[248px_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-20">
+            <div className="flex items-center gap-2 px-1 pb-2.5 text-[12px] font-medium text-muted-foreground">
+              <Languages className="h-3.5 w-3.5" strokeWidth={1.9} />
+              Languages
+              <span className="ml-auto tabular">{grouped.length}</span>
+            </div>
+
+            <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
+              {grouped.map((group) => {
+                const active = group.language_group === activeGroup?.language_group;
+                const art = group.channels[0]
+                  ? channelArtwork(group.language_group)
+                  : null;
+                return (
+                  <button
+                    key={group.language_group}
+                    type="button"
+                    onClick={() => setSelectedGroup(group.language_group)}
+                    aria-pressed={active}
+                    className={cn(
+                      "group/group flex min-w-[176px] items-center gap-3 rounded-2xl border p-2.5 text-left transition-all duration-200 lg:w-full lg:min-w-0",
+                      active
+                        ? "border-foreground bg-foreground text-background shadow-raised"
+                        : "border-border bg-card hover:border-input hover:bg-surface",
+                    )}
+                  >
+                    {art ? (
+                      <img
+                        src={art}
+                        alt=""
+                        className={cn(
+                          "h-10 w-10 shrink-0 rounded-xl object-cover",
+                          !active && "opacity-90",
+                        )}
+                      />
+                    ) : (
+                      <span
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[12px] font-semibold",
+                          active
+                            ? "bg-background/15 text-background"
+                            : "bg-secondary text-muted-foreground",
+                        )}
+                      >
+                        {group.language_group.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-semibold leading-5">
+                        {group.label}
+                      </span>
+                      <span
+                        className={cn(
+                          "mt-0.5 block text-[11.5px] leading-4",
+                          active ? "text-background/60" : "text-muted-foreground",
+                        )}
+                      >
+                        {group.channels.length} channel
+                        {group.channels.length === 1 ? "" : "s"}
+                      </span>
+                    </span>
+
+                    <ChevronRight
+                      className={cn(
+                        "h-4 w-4 shrink-0 transition-transform",
+                        active
+                          ? "text-background/70"
+                          : "text-muted-foreground/40 group-hover/group:translate-x-0.5",
+                      )}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
