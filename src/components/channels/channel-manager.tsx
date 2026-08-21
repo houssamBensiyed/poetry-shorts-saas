@@ -676,3 +676,140 @@ export function ChannelManager() {
               })}
             </div>
           </aside>
+
+          {activeGroup ? (
+            <section
+              key={activeGroup.language_group}
+              className="min-w-0 animate-fade-up"
+            >
+              <div className="flex flex-wrap items-end justify-between gap-4 pb-5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <h2 className="truncate text-[24px] font-semibold leading-tight tracking-[-0.03em]">
+                      {activeGroup.label}
+                    </h2>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium tabular text-muted-foreground">
+                      {activeGroup.channels.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    {activeGroup.times.length > 0 ? (
+                      <>
+                        {activeGroup.times.slice(0, 3).map((time) => (
+                          <span
+                            key={time.id}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] tabular text-muted-foreground"
+                          >
+                            <Clock className="h-3 w-3" strokeWidth={1.9} />
+                            {time.time} UTC
+                          </span>
+                        ))}
+                        {activeGroup.times.length > 3 ? (
+                          <span className="text-[11px] tabular text-muted-foreground">
+                            +{activeGroup.times.length - 3}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span className="text-[11.5px] text-muted-foreground">
+                        No posting times yet
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTimesGroup(activeGroup)}
+                >
+                  <Clock className="h-3.5 w-3.5" /> Times
+                </Button>
+              </div>
+
+              {activeGroup.channels.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card/60 px-6 py-12 text-center">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
+                    <Radio className="h-5 w-5" strokeWidth={1.8} />
+                  </span>
+                  <div>
+                    <p className="text-[14px] font-semibold">
+                      No channels in this language
+                    </p>
+                    <p className="meta mt-1">
+                      Add one to start publishing in {activeGroup.label}.
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={openCreate}>
+                    <Plus className="h-3.5 w-3.5" /> Add channel
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {activeGroup.channels.map((channel) => {
+                    const health = channelHealth(channel);
+                    const art = channelArtwork(channel.id);
+                    const platforms = [
+                      ...new Set(
+                        channel.destinations
+                          .filter((destination) => destination.enabled)
+                          .map((destination) => destination.service),
+                      ),
+                    ];
+                    const visiblePlatforms = platforms.slice(0, 4);
+
+                    return (
+                      <article
+                        key={channel.id}
+                        className="group/card overflow-hidden rounded-2xl border border-border bg-card shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-raised"
+                      >
+                        <div className="relative aspect-[5/4] overflow-hidden bg-secondary">
+                          <img
+                            src={art}
+                            alt=""
+                            className={cn(
+                              "h-full w-full object-cover transition-transform duration-500 group-hover/card:scale-[1.035]",
+                              !channel.enabled && "grayscale",
+                            )}
+                          />
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/0 to-black/10" />
+
+                          <span
+                            title={health.label}
+                            className={cn(
+                              "absolute left-3 top-3 flex h-6 items-center gap-1.5 rounded-full border px-2 backdrop-blur-md",
+                              health.ring,
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "h-1.5 w-1.5 rounded-full",
+                                health.dot,
+                              )}
+                            />
+                            <span className="text-[10px] font-medium leading-none text-white/90">
+                              {health.label}
+                            </span>
+                          </span>
+
+                          {visiblePlatforms.length > 0 ? (
+                            <div className="absolute bottom-3 left-3 flex items-center">
+                              {visiblePlatforms.map((service, index) => (
+                                <PlatformChip
+                                  key={service}
+                                  service={service}
+                                  className={cn(
+                                    "h-6 w-6",
+                                    index > 0 && "-ml-1.5",
+                                  )}
+                                />
+                              ))}
+                              {platforms.length > 4 ? (
+                                <span className="ml-1.5 flex h-6 items-center rounded-full bg-black/35 px-2 text-[10px] font-medium text-white backdrop-blur-md">
+                                  +{platforms.length - 4}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
