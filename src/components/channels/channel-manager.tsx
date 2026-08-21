@@ -813,3 +813,121 @@ export function ChannelManager() {
                             </div>
                           ) : null}
                         </div>
+
+                        <div className="flex items-center gap-2 py-2 pl-3 pr-1.5">
+                          <h3 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
+                            {channel.name}
+                          </h3>
+
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <IconAction
+                              label="Edit channel"
+                              onClick={() => openEdit(channel)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </IconAction>
+                            <IconAction
+                              label="Refresh platforms"
+                              disabled={busyId === channel.id}
+                              onClick={() => void refresh(channel)}
+                            >
+                              {busyId === channel.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                            </IconAction>
+                            <IconAction
+                              label={
+                                channel.enabled
+                                  ? "Disable channel"
+                                  : "Enable channel"
+                              }
+                              onClick={() => void toggle(channel)}
+                            >
+                              <Power className="h-3.5 w-3.5" />
+                            </IconAction>
+                            <IconAction
+                              label="Delete channel"
+                              danger
+                              onClick={() => void remove(channel)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </IconAction>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ) : null}
+        </div>
+      )}
+
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editing ? "Edit channel" : "Add channel"}
+        description="Choose the Buffer account, then tick the platforms that belong to this channel."
+      >
+        <form onSubmit={submit} className="space-y-4">
+          {error ? <Alert tone="error">{error}</Alert> : null}
+
+          <div className="space-y-2">
+            <Label htmlFor="channel-name">Channel name</Label>
+            <Input
+              id="channel-name"
+              required
+              maxLength={80}
+              value={form.name}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, name: event.target.value }))
+              }
+              placeholder="French Poetry 1"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="channel-language">Language code</Label>
+              <Input
+                id="channel-language"
+                required
+                value={form.language}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    language: event.target.value,
+                  }))
+                }
+                placeholder="fr"
+              />
+              <p className="text-xs text-muted-foreground">
+                Any language. Group shown:{" "}
+                <span className="font-medium">
+                  {form.language.trim()
+                    ? form.language.trim().toLowerCase().split(/[-_]/)[0]
+                    : "auto"}
+                </span>
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="channel-style">Default reel style</Label>
+              <Select
+                id="channel-style"
+                value={form.reel_style}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    reel_style: event.target.value as "A" | "B",
+                  }))
+                }
+              >
+                <option value="A">Style A · Poetry images</option>
+                <option value="B">Style B · Vertical clips</option>
+              </Select>
+            </div>
+          </div>
