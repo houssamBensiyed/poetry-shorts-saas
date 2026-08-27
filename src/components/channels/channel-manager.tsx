@@ -931,3 +931,144 @@ export function ChannelManager() {
               </Select>
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="channel-token">Buffer access token</Label>
+            <Input
+              id="channel-token"
+              type="password"
+              required={!editing}
+              maxLength={4000}
+              value={form.buffer_access_token}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  buffer_access_token: event.target.value,
+                }))
+              }
+              placeholder={
+                editing
+                  ? "Leave blank to keep the current token"
+                  : "1/buffer_token_…"
+              }
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Stored on the server and never shown again.
+            </p>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border bg-surface p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[13px] font-medium">Buffer account</p>
+                <p className="meta mt-0.5">
+                  Load the organizations, then the platforms inside one of them.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadOrganizations()}
+                disabled={loadingOrganizations}
+              >
+                {loadingOrganizations ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Load organizations
+              </Button>
+            </div>
+
+            {organizations.length > 0 ? (
+              <div className="space-y-2">
+                <Label htmlFor="channel-org">Organization</Label>
+                <Select
+                  id="channel-org"
+                  value={form.organizationId}
+                  onChange={(event) => {
+                    const organization = organizations.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    setForm((current) => ({
+                      ...current,
+                      organizationId: event.target.value,
+                      organizationName: organization?.name ?? "",
+                    }));
+                    void loadPlatforms(event.target.value);
+                  }}
+                >
+                  <option value="">Choose an organization</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : form.organizationId ? (
+              <p className="text-xs text-muted-foreground">
+                Organization:{" "}
+                {form.organizationName || form.organizationId}
+              </p>
+            ) : null}
+
+            {loadingPlatforms ? (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading
+                platforms…
+              </p>
+            ) : null}
+
+            {remote.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Platforms
+                </p>
+                {remote.map((destination) => {
+                  const state = selection[destination.id] ?? {
+                    selected: false,
+                    category: DEFAULT_YOUTUBE_CATEGORY_ID,
+                  };
+                  const unavailable =
+                    destination.isDisconnected ||
+                    destination.isLocked ||
+                    destination.isQueuePaused;
+                  return (
+                    <div
+                      key={destination.id}
+                      className="rounded-md border border-border/80 bg-card p-2.5"
+                    >
+                      <label className="flex items-start gap-2 text-[13px]">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+                          checked={state.selected}
+                          onChange={(event) =>
+                            setSelection((current) => ({
+                              ...current,
+                              [destination.id]: {
+                                ...state,
+                                selected: event.target.checked,
+                              },
+                            }))
+                          }
+                        />
+                        <span className="min-w-0">
+                          <span className="font-medium">
+                            {serviceLabel(destination.service)}
+                          </span>{" "}
+                          · {destination.displayName || destination.name}
+                          {unavailable ? (
+                            <span className="ml-2 text-xs text-rose-600">
+                              {destination.isDisconnected
+                                ? "disconnected"
+                                : destination.isLocked
+                                  ? "locked"
+                                  : "queue paused"}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
