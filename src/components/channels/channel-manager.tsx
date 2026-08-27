@@ -1072,3 +1072,143 @@ export function ChannelManager() {
                           ) : null}
                         </span>
                       </label>
+
+                      {destination.service === "youtube" && state.selected ? (
+                        <div className="mt-2 flex items-center gap-2 pl-6">
+                          <Label
+                            htmlFor={`yt-${destination.id}`}
+                            className="text-xs"
+                          >
+                            Category
+                          </Label>
+                          <Select
+                            id={`yt-${destination.id}`}
+                            className="h-8 w-56 text-xs"
+                            value={state.category}
+                            onChange={(event) =>
+                              setSelection((current) => ({
+                                ...current,
+                                [destination.id]: {
+                                  ...state,
+                                  category: event.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            {YOUTUBE_CATEGORIES.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          <label className="flex items-center gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={form.enabled}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  enabled: event.target.checked,
+                }))
+              }
+            />
+            Channel is enabled and can receive new voices
+          </label>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={saving || loadingPlatforms || loadingOrganizations}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {editing ? "Save changes" : "Create channel"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(timesGroup)}
+        onClose={() => setTimesGroup(null)}
+        title={
+          timesGroup
+            ? `${timesGroup.label} posting times`
+            : "Posting times"
+        }
+        description="Only the time of day is saved, never the date. All times are UTC+0."
+      >
+        <div className="space-y-4">
+          {timesGroup?.times.length ? (
+            <ul className="space-y-2">
+              {timesGroup.times.map((time) => (
+                <li
+                  key={time.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-[13px]"
+                >
+                  <div>
+                    <p className="tabular font-medium">{time.time} UTC</p>
+                    <p className="meta mt-0.5">
+                      Used {time.use_count} time(s) · last{" "}
+                      {formatUtcDateTime(time.last_used_at)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Remove time"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => void deleteTime(time)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-lg border border-dashed border-border p-4 text-[13px] text-muted-foreground">
+              No times yet. Add one below, or schedule a voice to remember its
+              time automatically.
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-time">New time (UTC)</Label>
+              <Input
+                id="new-time"
+                type="time"
+                value={newTime}
+                onChange={(event) => setNewTime(event.target.value)}
+                className="w-36"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => void addTime()}
+              disabled={!newTime}
+            >
+              <Plus className="h-4 w-4" /> Add time
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
