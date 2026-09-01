@@ -259,3 +259,136 @@ export function VoiceManager({
     }, 10_000);
     return () => window.clearInterval(timer);
   }, [loadVoices]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void syncStatuses(false);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [syncStatuses]);
+
+  useEffect(() => {
+    if (!uploadOpen || !form.channelId || !form.scheduled_date) {
+      setOptions(null);
+      setOptionsError(null);
+      return;
+    }
+
+    const request = optionsRequest.current + 1;
+    optionsRequest.current = request;
+    setOptionsLoading(true);
+    setOptionsError(null);
+
+    void apiFetch<ScheduleOptions>(
+      `/api/voices/schedule-options?channelId=${encodeURIComponent(
+        form.channelId,
+      )}&date=${encodeURIComponent(form.scheduled_date)}`,
+    )
+      .then((data) => {
+        if (optionsRequest.current !== request) return;
+        setOptions(data);
+        setOptionsError(null);
+        setForm((current) => ({
+          ...current,
+          scheduled_time: data.suggested_time ?? "",
+        }));
+      })
+      .catch((err) => {
+        if (optionsRequest.current !== request) return;
+        setOptions(null);
+        setOptionsError(errorText(err));
+      })
+      .finally(() => {
+        if (optionsRequest.current === request) setOptionsLoading(false);
+      });
+  }, [uploadOpen, form.channelId, form.scheduled_date]);
+
+  const groupedChannels = useMemo(() => groupChannels(channels), [channels]);
+
+  const visibleVoices = useMemo(
+    () =>
+      voices.filter((voice) => {
+        if (channelFilter !== "all" && voice.channel.id !== channelFilter) {
+          return false;
+        }
+        if (
+          languageFilter !== "all" &&
+          voice.channel.language_group !== languageFilter
+        ) {
+          return false;
+        }
+        if (statusFilter !== "all" && voice.status !== statusFilter) {
+          return false;
+        }
+        return true;
+      }),
+    [voices, channelFilter, languageFilter, statusFilter],
+  );
+
+  const queuedCount = voices.filter((voice) => voice.status === "queued").length;
+
+  const languageGroups = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const channel of channels) {
+      map.set(
+        channel.language_group,
+        (map.get(channel.language_group) ?? 0) + 1,
+      );
+    }
+    return [...map.entries()].sort(([left], [right]) =>
+      languageLabel(left).localeCompare(languageLabel(right)),
+    );
+  }, [channels]);
+
+  function openUpload() {
+    setFormError(null);
+    setFile(null);
+    setOptions(null);
+    setForm((current) => ({
+      ...current,
+      title: "",
+      description: "",
+      upload_to_buffer: true,
+      channelId:
+        channels.find((channel) => channel.enabled)?.id ?? current.channelId,
+      scheduled_date: todayUtcKey(),
+      scheduled_time: "",
+    }));
+    setUploadOpen(true);
+  }
+
+  async function submitUpload(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError(null);
+
+    if (!file) {
+      setFormError("Choose an .mp3 or .wav file first.");
+      return;
+    }
+    if (!form.channelId) {
+      setFormError("Create an enabled channel before uploading a voice.");
+      return;
+    }
+    if (form.upload_to_buffer && !form.scheduled_time) {
+      setFormError("Choose a publish time. All times are UTC+0.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.set("file", file);
+      body.set("title", form.title);
+      body.set("description", form.description);
+      body.set("channelId", form.channelId);
+      body.set("storage_mode", storageMode);
+      body.set("upload_to_buffer", form.upload_to_buffer ? "true" : "false");
+      if (form.upload_to_buffer) {
+        body.set("scheduled_date", form.scheduled_date);
+        body.set("scheduled_time", form.scheduled_time);
+      }
+
+      await apiFetch<{ voice: Voice }>("/api/voices", {
+        method: "POST",
+        body,
+      });
