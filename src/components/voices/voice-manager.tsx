@@ -392,3 +392,109 @@ export function VoiceManager({
         method: "POST",
         body,
       });
+
+      setUploadOpen(false);
+      setNotice(
+        form.upload_to_buffer
+          ? `“${form.title}” queued for ${form.scheduled_date} ${form.scheduled_time} UTC.`
+          : `“${form.title}” uploaded and queued.`,
+      );
+      await loadVoices();
+      await loadChannels();
+    } catch (err) {
+      setFormError(errorText(err));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function retry(voice: Voice) {
+    setError(null);
+    try {
+      await apiFetch(`/api/voices/${voice.id}/retry`, { method: "POST" });
+      router.push("/dashboard/queue");
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function remove(voice: Voice) {
+    if (!window.confirm(`Delete “${voice.title}”? This cannot be undone.`)) {
+      return;
+    }
+    setError(null);
+    try {
+      await apiFetch(`/api/voices/${voice.id}`, { method: "DELETE" });
+      setNotice(`“${voice.title}” deleted.`);
+      await loadVoices();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function processVoices() {
+    setError(null);
+    setStartingQueue(true);
+    try {
+      await apiFetch("/api/queue", { method: "POST" });
+      router.push("/dashboard/queue");
+    } catch (err) {
+      setError(errorText(err));
+      setStartingQueue(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="page-title">Voices</h1>
+          <p className="page-lede">
+            Upload a recording, choose the UTC publish date and time, then
+            process. Buffer publishes later, even when the app is closed.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void syncStatuses(true)}
+            disabled={syncing}
+            title="Check every scheduled post with Buffer now"
+          >
+            {syncing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Refresh statuses
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void processVoices()}
+            disabled={startingQueue || queuedCount === 0}
+            title={
+              queuedCount === 0
+                ? "No queued voices to process"
+                : "Process all queued voices"
+            }
+          >
+            {startingQueue ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            Process saved voices
+            {queuedCount > 0 ? (
+              <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[11px]">
+                {queuedCount}
+              </span>
+            ) : null}
+          </Button>
+          <Button onClick={openUpload}>
+            <Plus className="h-4 w-4" /> Upload voice
+          </Button>
+        </div>
+      </div>
+
+      {error ? <Alert tone="error">{error}</Alert> : null}
+      {notice ? <Alert tone="success">{notice}</Alert> : null}
