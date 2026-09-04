@@ -498,3 +498,239 @@ export function VoiceManager({
 
       {error ? <Alert tone="error">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
+
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-muted-foreground">Language</span>
+              <Select
+                value={languageFilter}
+                onChange={(event) => setLanguageFilter(event.target.value)}
+                className="w-40"
+                aria-label="Filter by language group"
+              >
+                <option value="all">All languages</option>
+                {languageGroups.map(([group, count]) => (
+                  <option key={group} value={group}>
+                    {languageLabel(group)} ({count})
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-muted-foreground">Channel</span>
+              <Select
+                value={channelFilter}
+                onChange={(event) => setChannelFilter(event.target.value)}
+                className="w-44"
+                aria-label="Filter by channel"
+              >
+                <option value="all">All channels</option>
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-muted-foreground">Status</span>
+              <Select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as "all" | JobStatusValue)
+                }
+                className="w-44"
+                aria-label="Filter by status"
+              >
+                {filterStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status === "all" ? "All statuses" : statusLabel[status]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            {visibleVoices.length} of {voices.length} voice(s)
+            {lastSync ? (
+              <span className="block text-[11px]">
+                Buffer checked {formatDate(lastSync)}
+              </span>
+            ) : null}
+          </p>
+        </CardContent>
+      </Card>
+
+      {loading ? (
+        <Card>
+          <CardContent className="flex items-center gap-2 p-8 text-[13px] text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading voices…
+          </CardContent>
+        </Card>
+      ) : visibleVoices.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 px-6 py-14 text-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
+              <UploadCloud className="h-5 w-5" strokeWidth={1.8} />
+            </span>
+            <div>
+              <p className="text-[15px] font-semibold">
+                {voices.length === 0
+                  ? "No voices yet"
+                  : "No voices match these filters"}
+              </p>
+              <p className="meta mx-auto mt-1 max-w-sm">
+                {voices.length === 0
+                  ? "Upload an .mp3 or .wav recording, choose a UTC time, and process it."
+                  : "Try a different language, channel, or status filter."}
+              </p>
+            </div>
+            {voices.length === 0 ? (
+              <Button onClick={openUpload}>
+                <Plus className="h-4 w-4" /> Upload your first voice
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto ">
+            <table className="data-table min-w-[980px]">
+              <thead>
+                <tr>
+                  <th>Voice</th>
+                  <th>Channel</th>
+                  <th>Publish (UTC)</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleVoices.map((voice) => (
+                  <tr key={voice.id}>
+                    <td className="max-w-72">
+                      <p className="truncate font-medium">{voice.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {voice.description || "No description"}
+                      </p>
+                      {voice.error_message ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-rose-600">
+                          {voice.error_message}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p>{voice.channel.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {languageLabel(voice.channel.language_group)} (
+                        {voice.channel.language}) · Style{" "}
+                        {voice.reel_style}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {voice.scheduled_at ? (
+                        <>
+                          <p className="font-medium">
+                            {formatUtcDateTime(voice.scheduled_at)}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Created {formatDate(voice.createdAt)}
+                          </p>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Not scheduled
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={voice.status} />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {voice.upload_to_buffer ? "Buffer" : "Download only"} ·{" "}
+                        {voice.storage_mode === "LOCAL"
+                          ? "Local files"
+                          : "Cloudinary"}
+                      </p>
+                      {voice.publishes.length > 0 ? (
+                        <ul className="mt-2 space-y-1">
+                          {voice.publishes.map((publish) => (
+                            <li
+                              key={publish.id}
+                              className="flex flex-wrap items-center gap-1.5 text-xs"
+                            >
+                              <span className="max-w-40 truncate">
+                                {publish.destination.name}
+                              </span>
+                              <DestinationBadge status={publish.status} />
+                              {publish.external_url ? (
+                                <a
+                                  href={publish.external_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-link underline-offset-2 hover:underline"
+                                >
+                                  open
+                                </a>
+                              ) : null}
+                              {publish.status === "failed" &&
+                              publish.error_message ? (
+                                <span
+                                  className="max-w-56 truncate text-rose-600"
+                                  title={publish.error_message}
+                                >
+                                  {publish.error_message}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatDuration(voice.duration_seconds)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {voice.rendered_video_url ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Preview reel"
+                            onClick={() => setPreview(voice)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                        {voice.status === "failed" ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Retry voice"
+                            onClick={() => void retry(voice)}
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                        {canDelete(voice) ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Delete voice"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => void remove(voice)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
