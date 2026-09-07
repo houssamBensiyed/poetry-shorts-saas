@@ -734,3 +734,50 @@ export function VoiceManager({
           </div>
         </Card>
       )}
+
+      <p className="meta">
+        A voice with Buffer posts cannot be deleted here. Remove the posts in
+        Buffer first. Retry only failed voices.
+      </p>
+
+      <Modal
+        open={uploadOpen}
+        onClose={() => {
+          if (!uploading) setUploadOpen(false);
+        }}
+        title="Upload a voice"
+        description="Choose the date and time first. The time is always UTC+0."
+      >
+        <form onSubmit={submitUpload} className="space-y-4">
+          {formError ? <Alert tone="error">{formError}</Alert> : null}
+
+          <div className="space-y-2">
+            <Label htmlFor="voice-title">Title</Label>
+            <Input
+              id="voice-title"
+              required
+              maxLength={500}
+              value={form.title}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, title: event.target.value }))
+              }
+              placeholder="Daily Poetry #1"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="voice-description">Description</Label>
+            <Textarea
+              id="voice-description"
+              maxLength={5000}
+              rows={3}
+              value={form.description}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  description: event.target.value,
+                }))
+              }
+              placeholder="Full caption #poetry #shorts"
+            />
+          </div>
