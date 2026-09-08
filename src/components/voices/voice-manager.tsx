@@ -781,3 +781,157 @@ export function VoiceManager({
               placeholder="Full caption #poetry #shorts"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="voice-channel">Channel</Label>
+            <Select
+              id="voice-channel"
+              required
+              value={form.channelId}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  channelId: event.target.value,
+                }))
+              }
+            >
+              <option value="" disabled>
+                Choose a channel
+              </option>
+              {groupedChannels.map((group) => (
+                <optgroup key={group.group} label={group.label}>
+                  {group.channels
+                    .filter((channel) => channel.enabled)
+                    .map((channel) => (
+                      <option key={channel.id} value={channel.id}>
+                        {channel.name} · Style {channel.reel_style}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </Select>
+            {channels.filter((channel) => channel.enabled).length === 0 ? (
+              <p className="text-xs text-rose-600">
+                No enabled channels. Create or enable one first.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5 rounded-lg border border-border bg-surface px-3.5 py-3 text-[13px]">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">File storage</span>
+              <span className="font-medium">
+                {storageMode === "LOCAL"
+                  ? "Local folder on this server"
+                  : "Cloudinary"}
+              </span>
+            </div>
+            {storageMode === "LOCAL" ? (
+              <p className="text-[12px] text-muted-foreground">
+                Audio and reel stay local. If this voice publishes to Buffer,
+                only the finished reel is uploaded to Cloudinary so Buffer can
+                fetch it. Change this in Profile.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="voice-date">Publish date (UTC)</Label>
+              <Input
+                id="voice-date"
+                type="date"
+                required={form.upload_to_buffer}
+                value={form.scheduled_date}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    scheduled_date: event.target.value,
+                  }))
+                }
+                disabled={!form.upload_to_buffer}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="voice-time">Publish time (UTC+0)</Label>
+              <Input
+                id="voice-time"
+                type="time"
+                required={form.upload_to_buffer}
+                value={form.scheduled_time}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    scheduled_time: event.target.value,
+                  }))
+                }
+                disabled={!form.upload_to_buffer}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-border bg-surface p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[13px] font-medium">
+                Saved times for this language
+              </p>
+              {optionsLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : null}
+            </div>
+
+            {optionsError ? (
+              <p className="text-[12px] text-rose-600">{optionsError}</p>
+            ) : options && options.times.length > 0 ? (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {options.times.map((time) => (
+                    <button
+                      key={time.time}
+                      type="button"
+                      disabled={time.passed}
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          scheduled_time: time.time,
+                        }))
+                      }
+                      className={`tabular rounded-md border px-2 py-1 text-[12px] font-medium transition-colors ${
+                        form.scheduled_time === time.time
+                          ? "border-foreground bg-foreground text-background"
+                          : time.passed
+                            ? "cursor-not-allowed border-border text-muted-foreground/50"
+                            : time.used
+                              ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/50 dark:text-amber-300"
+                              : "border-input bg-card hover:bg-secondary"
+                      }`}
+                      title={
+                        time.used
+                          ? "Already used on this date in this channel"
+                          : time.passed
+                            ? "This time already passed today (UTC)"
+                            : "Use this time"
+                      }
+                    >
+                      {time.time}
+                      {time.used ? " · used" : ""}
+                    </button>
+                  ))}
+                </div>
+                {options.all_used ? (
+                  <p className="text-[12px] text-amber-700">
+                    All saved times are used on this date. Type a new time above.
+                  </p>
+                ) : options.suggested_time ? (
+                  <p className="meta">
+                    Suggested time: {options.suggested_time} UTC
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-[12px] text-muted-foreground">
+                No saved times for this language yet. Type a time above. It will
+                be remembered for the next upload.
+              </p>
+            )}
+          </div>
