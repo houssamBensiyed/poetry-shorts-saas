@@ -935,3 +935,124 @@ export function VoiceManager({
               </p>
             )}
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="voice-file">Audio file (.mp3 or .wav)</Label>
+            <Input
+              id="voice-file"
+              type="file"
+              accept=".mp3,.wav,audio/mpeg,audio/wav"
+              required
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Maximum 50 MB. {file ? `Selected: ${truncate(file.name, 48)}` : ""}
+            </p>
+          </div>
+
+          <label className="flex items-start gap-2.5 rounded-lg border border-border p-3.5 text-[13px]">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+              checked={form.upload_to_buffer}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  upload_to_buffer: event.target.checked,
+                }))
+              }
+            />
+            <span>
+              <span className="font-medium">
+                Schedule to Buffer and all its destinations
+              </span>
+              <span className="block text-[12px] text-muted-foreground">
+                Unchecked voices finish as “Completed” and stay downloadable.
+              </span>
+            </span>
+          </label>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setUploadOpen(false)}
+              disabled={uploading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={uploading}>
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <UploadCloud className="h-4 w-4" />
+              )}
+              {uploading ? "Uploading…" : "Upload and queue"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(preview)}
+        onClose={() => setPreview(null)}
+        title={preview?.title ?? "Reel preview"}
+        description={preview ? `Channel: ${preview.channel.name}` : undefined}
+      >
+        {preview?.rendered_video_url ? (
+          <div className="space-y-4">
+            <video
+              key={preview.id}
+              src={reelUrl(preview)}
+              controls
+              playsInline
+              className="max-h-[65vh] w-full rounded-lg bg-black"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-[13px] text-muted-foreground">
+                <p>Duration: {formatDuration(preview.duration_seconds)}</p>
+                {preview.scheduled_at ? (
+                  <p className="text-[11px]">
+                    Publish: {formatUtcDateTime(preview.scheduled_at)}
+                  </p>
+                ) : null}
+                {preview.publishes.map((publish) => (
+                  <p key={publish.id} className="font-mono text-[11px]">
+                    {publish.destination.name}:{" "}
+                    {publish.buffer_post_id ?? "pending"}
+                    {publish.status === "published" ? " · sent" : ""}
+                  </p>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={reelUrl(preview)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-input bg-card px-3.5 text-[13px] font-medium hover:bg-surface"
+                >
+                  <Eye className="h-4 w-4" /> Open
+                </a>
+                <a
+                  href={reelUrl(preview, true)}
+                  download
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-foreground px-3.5 text-[13px] font-medium text-background hover:bg-foreground/90"
+                >
+                  <Download className="h-4 w-4" /> Download
+                </a>
+                <Button variant="outline" onClick={() => setPreview(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3 p-8 text-center text-[13px] text-muted-foreground">
+            <RefreshCw className="h-5 w-5" />
+            No rendered video is available for this voice yet.
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
