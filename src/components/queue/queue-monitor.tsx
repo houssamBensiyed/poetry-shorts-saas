@@ -333,3 +333,111 @@ export function QueueMonitor() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle>Recent runs</CardTitle>
+          <p className="meta">The last few process runs and their outcomes.</p>
+        </CardHeader>
+        <CardContent>
+          {!data || data.recentRuns.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border p-4 text-[13px] text-muted-foreground">
+              No runs yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="data-table min-w-[640px]">
+                <thead>
+                  <tr>
+                    <th>Run</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Failures</th>
+                    <th>Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recentRuns.map((run) => (
+                    <tr key={run.id}>
+                      <td className="font-mono text-[11px] text-muted-foreground">
+                        {run.id.slice(0, 8)}
+                      </td>
+                      <td>
+                        <StatusBadge status={run.status} />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <Progress value={run.progress} className="h-1.5 w-24" />
+                          <span className="tabular text-[11px] text-muted-foreground">
+                            {run.completed_items}/{run.total_items}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        {run.failed_items > 0 ? (
+                          <span className="text-rose-600">{run.failed_items}</span>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </td>
+                      <td className="text-[11px] text-muted-foreground">
+                        {formatDate(run.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <p className="meta">
+        Failed voices stop the run for that item only; the worker continues with the
+        rest. Retry failures from the Voices page.
+      </p>
+
+      <Modal
+        open={Boolean(preview)}
+        onClose={() => setPreview(null)}
+        title={preview?.title ?? "Reel preview"}
+        description={preview ? `Channel: ${preview.channel.name}` : undefined}
+      >
+        {preview?.rendered_video_url ? (
+          <div className="space-y-4">
+            <video
+              key={preview.id}
+              src={reelUrl(preview)}
+              controls
+              playsInline
+              className="max-h-[65vh] w-full rounded-lg bg-black"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-muted-foreground">
+              <span>
+                Duration: {formatDuration(preview.duration_seconds)} ·{" "}
+                {truncate(preview.channel.name, 32)}
+              </span>
+              <div className="flex gap-2">
+                <a
+                  href={reelUrl(preview)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-input bg-card px-3.5 font-medium text-foreground hover:bg-surface"
+                >
+                  Open video
+                </a>
+                <a
+                  href={reelUrl(preview, true)}
+                  download
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-foreground px-3.5 font-medium text-background hover:bg-foreground/90"
+                >
+                  Download
+                </a>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
