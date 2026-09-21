@@ -95,3 +95,107 @@ export function AdminQueueHealth() {
   const total = queue
     ? queue.waiting + queue.active + queue.failed + queue.completed + queue.delayed + queue.paused
     : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="page-title">Queue health</h1>
+          <p className="page-lede">
+            Global BullMQ counts for the voice-processing queue. Refreshes every
+            few seconds.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-input bg-card px-3.5 text-[13px] font-medium transition-colors hover:bg-surface"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Refresh
+        </button>
+      </div>
+
+      {error ? <Alert tone="error">{error}</Alert> : null}
+      {queueError ? (
+        <Alert tone="error">
+          Redis is unreachable: {queueError}. Start Redis and the worker, then
+          refresh.
+        </Alert>
+      ) : null}
+
+      <Card className="overflow-hidden">
+        <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <div key={card.label} className="bg-card p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[12px] font-medium text-muted-foreground">
+                    {card.label}
+                  </p>
+                  <Icon
+                    className="h-4 w-4 text-muted-foreground/60"
+                    strokeWidth={1.8}
+                  />
+                </div>
+                <p className="tabular mt-2 text-[28px] font-semibold leading-none tracking-[-0.03em]">
+                  {loading ? "…" : card.value}
+                </p>
+                <p className="mt-2 text-[11.5px] text-muted-foreground">
+                  {card.hint}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle>Queue details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border text-[13px] sm:grid-cols-3">
+            <div className="bg-card p-4">
+              <p className="flex items-center gap-2 font-medium">
+                <PauseCircle className="h-3.5 w-3.5 text-muted-foreground" />{" "}
+                Delayed
+              </p>
+              <p className="tabular mt-2 text-[22px] font-semibold leading-none tracking-[-0.02em]">
+                {queue?.delayed ?? 0}
+              </p>
+            </div>
+            <div className="bg-card p-4">
+              <p className="flex items-center gap-2 font-medium">
+                <PauseCircle className="h-3.5 w-3.5 text-muted-foreground" />{" "}
+                Paused
+              </p>
+              <p className="tabular mt-2 text-[22px] font-semibold leading-none tracking-[-0.02em]">
+                {queue?.paused ?? 0}
+              </p>
+            </div>
+            <div className="bg-card p-4">
+              <p className="flex items-center gap-2 font-medium">
+                <TriangleAlert className="h-3.5 w-3.5 text-muted-foreground" />{" "}
+                Total known
+              </p>
+              <p className="tabular mt-2 text-[22px] font-semibold leading-none tracking-[-0.02em]">
+                {total}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <p className="meta">
+        Completed and failed jobs are retained for the latest 200 runs. The worker
+        processes one queue run at a time (concurrency 1).
+      </p>
+    </div>
+  );
+}
