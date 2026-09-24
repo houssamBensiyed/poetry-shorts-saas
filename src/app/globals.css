@@ -133,3 +133,67 @@
     }
   }
 }
+
+@layer components {
+  .page-title {
+    @apply text-[28px] font-semibold leading-[1.15] tracking-[-0.03em] text-foreground;
+  }
+
+  .page-lede {
+    @apply mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted-foreground;
+  }
+
+  .section-title {
+    @apply text-[15px] font-semibold tracking-[-0.012em] text-foreground;
+  }
+
+  .meta {
+    @apply text-[12px] leading-relaxed text-muted-foreground;
+  }
+
+  .data-table {
+    @apply w-full text-left text-[13px];
+  }
+
+  .data-table thead tr {
+    @apply border-b border-border;
+  }
+
+  .data-table th {
+    @apply px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground/80;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 align-top;
+  }
+
+  .data-table tbody tr {
+    @apply border-b border-border/70 transition-colors last:border-0;
+  }
+
+  .data-table tbody tr:hover {
+    background-color: hsl(var(--surface));
+  }
+
+  .skip-link {
+    @apply sr-only rounded-lg bg-foreground px-3 py-2 text-[13px] font-medium text-background focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60];
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
