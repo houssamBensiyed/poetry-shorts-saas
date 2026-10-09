@@ -120,3 +120,93 @@ export default async function DashboardPage() {
       select: { service: true, _count: { select: { publishes: true } } },
     }),
   ]);
+
+  const counts = Object.fromEntries(
+    grouped.map((row) => [row.status, row._count._all]),
+  ) as Record<string, number>;
+
+  const queued = counts.queued ?? 0;
+  const inFlight =
+    (counts.processing ?? 0) + (counts.rendered ?? 0) + (counts.submitting ?? 0);
+  const published = (counts.published ?? 0) + (counts.completed ?? 0);
+  const scheduled = (counts.scheduled ?? 0) + (counts.publishing ?? 0);
+  const failed = (counts.failed ?? 0) + (counts.partial ?? 0);
+  const totalVoices = grouped.reduce((sum, row) => sum + row._count._all, 0);
+
+  const stats = [
+    {
+      label: "Channels",
+      value: channelCount,
+      hint: `${destinationCount} connected destination${destinationCount === 1 ? "" : "s"}`,
+      icon: Radio,
+      href: "/dashboard/channels",
+    },
+    {
+      label: "Queued",
+      value: queued,
+      hint: queued > 0 ? "ready for the next run" : "nothing waiting",
+      icon: AudioLines,
+      href: "/dashboard/voices",
+    },
+    {
+      label: "Published",
+      value: published,
+      hint: `${publishedThisMonth} post${publishedThisMonth === 1 ? "" : "s"} this month`,
+      icon: Send,
+      href: "/dashboard/voices",
+    },
+    {
+      label: "Needs attention",
+      value: failed,
+      hint: failed > 0 ? "open voices to retry" : "no failures",
+      icon: TriangleAlert,
+      href: "/dashboard/voices",
+    },
+  ];
+
+  const activityCounts = new Map<string, { voices: number; published: number }>();
+  for (let index = 0; index < DAY_COUNT; index += 1) {
+    activityCounts.set(startOfUtcDay(DAY_COUNT - 1 - index).toISOString().slice(0, 10), {
+      voices: 0,
+      published: 0,
+    });
+  }
+  for (const voice of activityVoices) {
+    const key = voice.createdAt.toISOString().slice(0, 10);
+    const bucket = activityCounts.get(key);
+    if (bucket) bucket.voices += 1;
+  }
+  for (const publish of activityPublishes) {
+    if (!publish.published_at) continue;
+    const key = publish.published_at.toISOString().slice(0, 10);
+    const bucket = activityCounts.get(key);
+    if (bucket) bucket.published += 1;
+  }
+  const activityDays: ActivityDay[] = Array.from(activityCounts.entries()).map(
+    ([key, value]) => {
+      const date = new Date(`${key}T00:00:00.000Z`);
+      return {
+        key,
+        short: date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        }),
+        full: date.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        }),
+        ...value,
+      };
+    },
+  );
+
+  const statusSlices = [
+    { label: "Published", value: published, color: "hsl(var(--chart-2))" },
+    { label: "Scheduled", value: scheduled, color: "hsl(var(--chart-1))" },
+    { label: "In flight", value: inFlight, color: "hsl(var(--chart-3))" },
+    { label: "Queued", value: queued, color: "hsl(var(--chart-4))" },
+    { label: "Failed", value: failed, color: "hsl(var(--chart-5))" },
+  ];
