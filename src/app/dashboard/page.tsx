@@ -210,3 +210,112 @@ export default async function DashboardPage() {
     { label: "Queued", value: queued, color: "hsl(var(--chart-4))" },
     { label: "Failed", value: failed, color: "hsl(var(--chart-5))" },
   ];
+
+  const platformCounts = new Map<string, number>();
+  for (const row of destinationRows) {
+    if (row._count.publishes === 0) continue;
+    platformCounts.set(
+      row.service,
+      (platformCounts.get(row.service) ?? 0) + row._count.publishes,
+    );
+  }
+  const platforms = Array.from(platformCounts.entries())
+    .map(([service, count]) => ({
+      service,
+      label: serviceLabel(service),
+      count,
+    }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 6);
+
+  const progress = activeRun
+    ? activeRun.total_items > 0
+      ? Math.round((activeRun.completed_items / activeRun.total_items) * 100)
+      : 0
+    : 0;
+  const currentVoice = activeRun?.voices.find((voice) =>
+    ["processing", "submitting"].includes(voice.status),
+  );
+
+  const name = displayName(record?.name, user.email);
+
+  return (
+    <div className="space-y-7">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="page-title">Welcome back, {name}</h1>
+          <p className="page-lede">
+            {totalVoices > 0
+              ? `${totalVoices} recording${totalVoices === 1 ? "" : "s"} across ${channelCount} channel${channelCount === 1 ? "" : "s"}. Here is how the last two weeks look.`
+              : "Create a channel, upload a voice, then start your first queue run."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/channels" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Manage channels
+          </Link>
+          <Link href="/dashboard/voices" className={buttonVariants({ size: "sm" })}>
+            <Upload className="h-3.5 w-3.5" />
+            Upload voice
+          </Link>
+        </div>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+          {stats.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Link
+                key={stat.label}
+                href={stat.href}
+                className="group bg-card p-5 transition-colors hover:bg-surface"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[12px] font-medium text-muted-foreground">
+                    {stat.label}
+                  </p>
+                  <Icon
+                    className="h-4 w-4 text-muted-foreground/60"
+                    strokeWidth={1.8}
+                  />
+                </div>
+                <p className="tabular mt-2 text-[28px] font-semibold leading-none tracking-[-0.03em]">
+                  {stat.value}
+                </p>
+                <p className="mt-2 text-[11.5px] text-muted-foreground">
+                  {stat.hint}
+                </p>
+              </Link>
+            );
+          })}
+        </div>
+      </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Activity</CardTitle>
+            <p className="meta">
+              Voices added and posts published over the last {DAY_COUNT} days.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ActivityChart days={activityDays} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Voice status</CardTitle>
+            <p className="meta">Current state of every voice you own.</p>
+          </CardHeader>
+          <CardContent>
+            <StatusDonut
+              slices={statusSlices}
+              total={totalVoices}
+              label="Voice status"
+            />
+          </CardContent>
+        </Card>
+      </div>
