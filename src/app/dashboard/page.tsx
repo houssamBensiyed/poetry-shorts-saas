@@ -319,3 +319,139 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-4 pb-4">
+            <div>
+              <CardTitle>Queue run</CardTitle>
+              <p className="meta mt-0.5">
+                {activeRun
+                  ? "Voices are processed sequentially across every channel."
+                  : "No run is active right now."}
+              </p>
+            </div>
+            <Link
+              href="/dashboard/queue"
+              className="inline-flex shrink-0 items-center gap-0.5 text-[12.5px] font-medium text-link hover:underline hover:underline-offset-2"
+            >
+              Open queue
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeRun ? (
+              <>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium">
+                      Voice{" "}
+                      {Math.min(
+                        activeRun.completed_items + 1,
+                        activeRun.total_items,
+                      )}{" "}
+                      of {activeRun.total_items}
+                    </span>
+                    <span className="tabular text-muted-foreground">
+                      {progress}%
+                    </span>
+                  </div>
+                  <Progress value={progress} />
+                  <p className="meta">
+                    {activeRun.completed_items} finished ·{" "}
+                    {activeRun.total_items} total
+                  </p>
+                </div>
+                {currentVoice ? (
+                  <div className="rounded-lg border border-border bg-surface p-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium">
+                          {truncate(currentVoice.title, 60)}
+                        </p>
+                        <p className="meta">{currentVoice.channel.name}</p>
+                      </div>
+                      <StatusBadge status={currentVoice.status} />
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-dashed border-border p-4">
+                <div>
+                  <p className="text-[13px] font-medium">
+                    {queued > 0
+                      ? `${queued} voice${queued === 1 ? "" : "s"} ready to process`
+                      : "Nothing queued yet"}
+                  </p>
+                  <p className="meta mt-0.5">
+                    {queued > 0
+                      ? "Open the queue to start a run."
+                      : "Upload a voice first, then process it from the queue."}
+                  </p>
+                </div>
+                <Link
+                  href={queued > 0 ? "/dashboard/queue" : "/dashboard/voices"}
+                  className={cn(buttonVariants({ size: "sm" }))}
+                >
+                  {queued > 0 ? "Process voices" : "Upload a voice"}
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Platform mix</CardTitle>
+            <p className="meta">Where your posts are scheduled.</p>
+          </CardHeader>
+          <CardContent>
+            <PlatformMix items={platforms} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Next to publish</CardTitle>
+            <p className="meta">The next posts Buffer will release.</p>
+          </CardHeader>
+          <CardContent>
+            {upcoming.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-4">
+                <p className="text-[13px] font-medium">Nothing scheduled</p>
+                <p className="meta mt-0.5">
+                  Schedule a voice and it will appear here with its platform.
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {upcoming.map((publish) => (
+                  <li
+                    key={`${publish.voiceId}-${publish.destinationId}`}
+                    className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card">
+                        <PlatformIcon service={publish.destination.service} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium">
+                          {publish.voice.title}
+                        </p>
+                        <p className="meta mt-0.5">
+                          {serviceLabel(publish.destination.service)} ·{" "}
+                          {formatUtcDateTime(publish.scheduled_at)}
+                        </p>
+                      </div>
+                    </div>
+                    <BadgeSchedule />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
