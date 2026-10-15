@@ -455,3 +455,95 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-4 pb-3">
+            <div>
+              <CardTitle>Recent voices</CardTitle>
+              <p className="meta mt-0.5">The latest recordings you added.</p>
+            </div>
+            <Link
+              href="/dashboard/voices"
+              className="inline-flex shrink-0 items-center gap-0.5 text-[12.5px] font-medium text-link hover:underline hover:underline-offset-2"
+            >
+              View all
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentVoices.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-4">
+                <p className="meta">
+                  No voices uploaded yet.{" "}
+                  <Link
+                    href="/dashboard/voices"
+                    className="font-medium text-link hover:underline hover:underline-offset-2"
+                  >
+                    Add your first recording
+                  </Link>
+                  .
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/70">
+                {recentVoices.map((voice) => (
+                  <div
+                    key={voice.id}
+                    className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium">
+                        {voice.title}
+                      </p>
+                      <p className="meta mt-0.5">
+                        {voice.channel.name} · {formatDate(voice.createdAt)}
+                      </p>
+                      {voice.scheduled_at ? (
+                        <p className="meta">
+                          Publishes {formatUtcDateTime(voice.scheduled_at)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <StatusBadge status={voice.status} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {channelCount === 0 ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                <ListChecks className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-[13px] font-medium">Start with a channel</p>
+                <p className="meta mt-0.5">
+                  Connect a Buffer token and pick at least one platform. Then
+                  upload a voice.
+                </p>
+              </div>
+            </div>
+            <Link href="/dashboard/channels" className={buttonVariants({ size: "sm" })}>
+              Add a channel
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function BadgeSchedule() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/50 dark:text-sky-300">
+      <CalendarClock className="h-3 w-3" />
+      Scheduled
+    </span>
+  );
+}
