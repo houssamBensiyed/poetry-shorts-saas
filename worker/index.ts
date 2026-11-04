@@ -74,3 +74,86 @@ async function reconcile() {
     where: { status: { in: ["processing", "rendered", "submitting"] } },
     select: { id: true },
   });
+
+  for (const run of running) {
+    const existing = await queue.getJob(run.id).catch(() => null);
+    if (!existing) {
+      await enqueueRun(run.id);
+      console.log(`[worker] Re-enqueued orphaned queue run ${run.id}`);
+      continue;
+    }
+
+    // Failed/completed jobs are retained by BullMQ. The old code only checked
+    // that a job existed, so a failed job kept the run stuck forever.
+    const state = await existing.getState().catch(() => null);
+    if (state === "failed" || state === "completed" || state === "unknown") {
+      await existing.remove().catch(() => undefined);
+      await enqueueRun(run.id);
+      console.log(`[worker] Re-enqueued ${state ?? "orphaned"} queue run ${run.id}`);
+    }
+  }
+}
+
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[worker] Received ${signal}, shutting down`);
+  try {
+    await worker.close();
+    await queue.close();
+    await connection.quit();
+    await prisma.$disconnect();
+  } finally {
+    process.exit(0);
+  }
+}
+
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+console.log(`[worker] Listening on queue "${QUEUE_NAME}"`);
+
+reconcile().catch((error) => {
+  console.warn(
+    "[worker] Could not reconcile existing runs:",
+    error instanceof Error ? error.message : error,
+  );
+});
+
+/**
+ * Keep Buffer statuses fresh while the worker runs. The voices page does the
+ * same check when the user opens the app, so this is only a backup.
+ */
+const STATUS_SYNC_INTERVAL_MS = (() => {
+  const value = Number(process.env.STATUS_SYNC_INTERVAL_MS);
+  return Number.isFinite(value) && value > 0 ? value : 2 * 60_000;
+})();
+
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function syncStatuses() {
+  try {
+    const summary = await syncPublishStatuses();
+    if (summary.errors.length > 0) {
+      console.warn(
+        `[worker] Status sync finished with ${summary.errors.length} error(s): ${summary.errors[0]}`,
+      );
+    } else if (summary.updated > 0) {
+      console.log(
+        `[worker] Status sync checked ${summary.checked} post(s), updated ${summary.updated} voice(s)`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[worker] Status sync failed:",
+      error instanceof Error ? error.message : error,
+    );
+  } finally {
+    if (!shuttingDown) {
+      syncTimer = setTimeout(() => void syncStatuses(), STATUS_SYNC_INTERVAL_MS);
+    }
+  }
+}
+
+setTimeout(() => void syncStatuses(), 15_000);
