@@ -251,3 +251,121 @@ async function processVoice(voice: VoiceWithChannel, logger: PipelineLogger) {
       logger.info(
         `Rendering "${voice.title}" (${voice.id}) for channel ${voice.channel.name}`,
       );
+
+      await postJson(
+        `${RENDER_SERVICE_URL}/api/v1/render`,
+        {
+          voice_id: voice.id,
+          audio_url: voice.audio_url,
+          // Omit for remote mode so an older render service still accepts the
+          // request; the render service defaults to remote.
+          ...(voice.storage_mode === "LOCAL" ? { storage_mode: "local" } : {}),
+          channel_name: voice.channel.name,
+          reel_style: voice.reel_style ?? voice.channel.reel_style,
+          language: voice.channel.language,
+          callback_url: `${WEBHOOK_BASE_URL}/api/webhooks/render-complete`,
+        },
+        RENDER_API_KEY,
+        "Render service",
+      );
+
+      const rendered = await waitForRender(voice.id, RENDER_TIMEOUT_MS);
+      if (rendered.status === "failed") {
+        logger.warn(
+          `Render failed for ${voice.id}: ${rendered.error_message ?? "unknown error"}`,
+        );
+        return "failed" as const;
+      }
+      videoUrl = rendered.rendered_video_url;
+    }
+  }
+
+  if (!videoUrl) {
+    throw new Error("Render service reported success without a video URL");
+  }
+
+  if (!voice.upload_to_buffer) {
+    await prisma.voice.updateMany({
+      where: { id: voice.id, status: { in: ["rendered", "processing"] } },
+      data: { status: "completed" },
+    });
+    logger.info(`Completed "${voice.title}" (no Buffer upload requested)`);
+    return "completed" as const;
+  }
+
+  if (!voice.scheduled_at) {
+    throw new Error(
+      `No publish date was chosen for "${voice.title}". Set the UTC date and time first.`,
+    );
+  }
+  if (voice.scheduled_at.getTime() <= Date.now()) {
+    throw new Error(
+      `The publish time for "${voice.title}" has already passed. Choose a future UTC date and time, then retry.`,
+    );
+  }
+
+  const destinations = activeDestinations(voice);
+  if (destinations.length === 0) {
+    throw new Error(
+      `Channel "${voice.channel.name}" has no active Buffer destination. Enable at least one platform.`,
+    );
+  }
+
+  // If this attempt already created publish rows, do not create a second set of
+  // Buffer posts. Recompute the status from the stored rows instead.
+  const existingPublishes = await prisma.voicePublish.findMany({
+    where: { voiceId: voice.id },
+    select: { status: true },
+  });
+  if (existingPublishes.length > 0) {
+    const status = aggregateVoiceStatus(
+      existingPublishes.map((publish) => publish.status),
+    );
+    logger.warn(
+      `"${voice.title}" (${voice.id}) already has publish results; skipping a duplicate submit`,
+    );
+    return status ?? ("scheduled" as const);
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = decryptToken(voice.channel.buffer_access_token);
+  } catch {
+    throw new Error(
+      `Could not decrypt the Buffer token for channel "${voice.channel.name}"`,
+    );
+  }
+
+  const claimed = await prisma.voice.updateMany({
+    where: {
+      id: voice.id,
+      status: { in: ["rendered", "processing", "submitting"] },
+    },
+    data: { status: "submitting", error_message: null },
+  });
+  if (claimed.count === 0) {
+    throw new Error(
+      `Voice "${voice.title}" is no longer in a publishable state.`,
+    );
+  }
+
+  logger.info(
+    `Scheduling "${voice.title}" for ${voice.scheduled_at.toISOString()} on ${
+      destinations.length
+    } destination(s)`,
+  );
+
+  const response = await publishVoice({
+    token: accessToken,
+    voiceId: voice.id,
+    videoUrl: await publishVideoUrl(voice, videoUrl, logger),
+    title: voice.title,
+    description: voice.description,
+    scheduledAt: voice.scheduled_at,
+    destinations: destinations.map((destination) => ({
+      buffer_channel_id: destination.buffer_channel_id,
+      service: destination.service,
+      youtube_category_id: destination.youtube_category_id,
+    })),
+    callbackUrl: `${WEBHOOK_BASE_URL}/api/webhooks/publish-complete`,
+  });
