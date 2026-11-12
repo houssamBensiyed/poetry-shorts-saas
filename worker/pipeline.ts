@@ -369,3 +369,128 @@ async function processVoice(voice: VoiceWithChannel, logger: PipelineLogger) {
     })),
     callbackUrl: `${WEBHOOK_BASE_URL}/api/webhooks/publish-complete`,
   });
+
+  // Project 03 must return one result per requested destination. Missing
+  // results are failures, otherwise a partial publish could look scheduled.
+  const results: RemotePublishResult[] = [...response.results];
+  const returned = new Set(
+    results.map((result) => result.buffer_channel_id),
+  );
+  for (const destination of destinations) {
+    if (!returned.has(destination.buffer_channel_id)) {
+      results.push({
+        buffer_channel_id: destination.buffer_channel_id,
+        buffer_post_id: null,
+        status: "failed",
+        error: "Buffer did not return a result for this destination",
+      });
+    }
+  }
+
+  const status = results.length > 0
+    ? await recordPublishResults(voice.id, results)
+    : null;
+  const failed = results.filter((result) => result.status === "failed");
+
+  if (!status) {
+    throw new Error("Buffer returned no usable publish results");
+  }
+
+  if (status === "failed" || failed.length === results.length) {
+    logger.warn(
+      `Every destination failed for ${voice.id}: ${
+        failed[0]?.error ?? "unknown error"
+      }`,
+    );
+    await markFailed(
+      voice.id,
+      failed
+        .map((result) => result.error)
+        .filter(Boolean)
+        .join("; ")
+        .slice(0, 2000) || "Buffer rejected every destination",
+    );
+    return "failed" as const;
+  }
+
+  if (failed.length > 0) {
+    logger.warn(
+      `${failed.length}/${results.length} destination(s) failed for ${voice.id}`,
+    );
+  }
+
+  logger.info(
+    `Scheduled "${voice.title}" (${status}) with ${results.length} destination(s)`,
+  );
+  return status;
+}
+
+/**
+ * Process every voice in a QueueRun sequentially, updating progress after each
+ * voice. Webhooks from Project 02 move voices to rendered/failed; Project 03 is
+ * called directly and returns one result per destination.
+ */
+export async function processRun(
+  runId: string,
+  logger: PipelineLogger = defaultLogger,
+) {
+  const run = await prisma.queueRun.findUnique({ where: { id: runId } });
+  if (!run) {
+    logger.warn(`QueueRun ${runId} no longer exists`);
+    return;
+  }
+  if (run.status === "completed" || run.status === "failed") return;
+
+  const voices = await prisma.voice.findMany({
+    where: { queueRunId: runId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    include: {
+      channel: { include: { destinations: true } },
+      user: { select: pipelineUserSelect },
+    },
+  });
+
+  await prisma.queueRun.update({
+    where: { id: runId },
+    data: {
+      status: "processing",
+      total_items: voices.length,
+      completed_items: 0,
+    },
+  });
+
+  logger.info(`Starting queue run ${runId} with ${voices.length} voice(s)`);
+
+  let failures = 0;
+  for (let index = 0; index < voices.length; index += 1) {
+    const voice = voices[index];
+    try {
+      const result = await processVoice(voice, logger);
+      if (result === "failed") failures += 1;
+    } catch (error) {
+      failures += 1;
+      const message =
+        error instanceof Error ? error.message : "Unexpected processing error";
+      logger.error(`Voice ${voice.id} failed`, error);
+      await markFailed(voice.id, message);
+    }
+
+    await prisma.queueRun.update({
+      where: { id: runId },
+      data: { completed_items: index + 1 },
+    });
+  }
+
+  const allFailed = voices.length > 0 && failures === voices.length;
+  await prisma.queueRun.updateMany({
+    where: {
+      id: runId,
+      status: { in: ["processing", "rendered", "submitting"] },
+    },
+    data: { status: allFailed ? "failed" : "completed" },
+  });
+
+  logger.info(
+    `Queue run ${runId} finished with ${voices.length - failures}/${voices.length} voice(s) processed`,
+  );
+}
