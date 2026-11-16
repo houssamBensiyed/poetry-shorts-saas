@@ -205,3 +205,130 @@ then **Settings**. New users can register from `/register`.
 6. **Queue -> Process saved voices**: the worker renders and schedules the post.
 7. **Voices**: use **Refresh statuses** to read the current Buffer state.
 
+## Running in production
+
+Build once, then run the server and the worker as separate long-lived processes:
+
+```bash
+npm run build
+npm run start          # web app on PORT (default 3000)
+npm run worker:start   # background worker
+```
+
+Important:
+
+- `npm run build` writes to `.next`. Stop `npm run dev` before building. Running a
+  build while the dev server is active can corrupt `.next`.
+- Set `NEXTAUTH_URL` to the public URL and `WEBHOOK_BASE_URL` to the URL the
+  render and upload services can reach.
+- Set `WEBHOOK_SECRET` in production. Without it the webhook endpoints reject
+  every callback.
+- Keep `BUFFER_ENCRYPTION_KEY` stable across deploys so stored Buffer tokens
+  remain decryptable.
+
+## Common commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the Next.js dev server on port 3000 |
+| `npm run worker` | Start the queue worker in watch mode |
+| `npm run worker:start` | Start the queue worker once (production) |
+| `npm run build` | Generate Prisma client and build for production |
+| `npm run start` | Serve the production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Run TypeScript with no emit |
+| `npm run db:generate` | Regenerate the Prisma client |
+| `npm run db:migrate` | Apply migrations (`prisma migrate deploy`) |
+| `npm run db:push` | Push the schema without a migration |
+| `npm run db:seed` | Create the seed admin, or ensure an existing one is active |
+| `npm run db:reset-activity` | Delete voices, publish rows, queue runs, and saved posting times. Keeps accounts, channels, tokens, and credentials |
+| `npm run db:studio` | Open Prisma Studio |
+
+## Using the app
+
+### Account menu and settings
+
+Click the avatar in the top right to open the account menu. It contains:
+
+- **Your profile**: profile picture, display name, activity totals, and
+  connected services.
+- **Settings**: theme, password, file storage, and Cloudinary.
+- **Appearance**: light, dark, or system theme. The choice is remembered in a
+  cookie and local storage, and it applies before the page paints.
+- **Sign out**.
+
+Profile pictures are either one of the built-in artworks or a custom upload.
+Uploads are cropped to a square and resized to 256 by 256 in the browser, then
+stored with the account. Custom images are limited to 300 KB on disk. No
+Cloudinary account is needed for a profile picture.
+
+### Dashboard
+
+The overview page summarizes the last 14 days:
+
+- **Activity** bars for voices added and posts published.
+- **Voice status** donut for queued, in-flight, scheduled, published, and failed
+  voices.
+- **Platform mix** for where posts are scheduled.
+- **Next to publish** and **Recent voices** lists.
+
+The charts are plain HTML and CSS, with a screen-reader table behind the
+activity chart, so they work without an external chart package.
+
+### Clearing activity
+
+`npm run db:reset-activity` removes voices, publish rows, queue runs, and saved
+posting times. It keeps user accounts, channels, Buffer tokens, and Cloudinary
+credentials. Use it when you want a clean dashboard without reconnecting
+anything.
+
+## How the pieces fit
+
+### Channel and Buffer persistence
+
+A channel stores the Buffer organization id/name and the Buffer access token
+encrypted with AES-256-GCM. Each connected platform is a `ChannelDestination`
+row with its Buffer channel id, platform, enabled flag, and health flags. All of
+this lives in PostgreSQL, so restarting the app does not lose the connection. The
+worker decrypts the stored token only when it is about to publish.
+
+The project does not implement Buffer OAuth, so it cannot refresh an expired or
+revoked token. If Buffer invalidates the token, edit the channel and paste a new
+one. Changing `BUFFER_ENCRYPTION_KEY` also makes the stored token unreadable.
+
+### Status lifecycle
+
+A voice moves through:
+
+```
+queued -> processing -> rendered -> submitting -> scheduled --> publishing --> published
+   |          |            |                     |              |
+   +----------+------------+---------------------+--------------+--> partial / failed
+                                                                   +--(retry)--> queued
+```
+
+Each destination of a voice has its own status (`scheduled`, `publishing`,
+`published`, `failed`). The voice status is calculated from them:
+
+- every destination scheduled -> `scheduled`
+- any destination still sending -> `publishing`
+- some published and some failed -> `partial`
+- every destination published -> `published`
+- every destination failed -> `failed`
+
+Buffer keeps the posts, so the run finishes as soon as each voice is scheduled.
+The app can be closed until the publish time. When the voices page opens, Project
+01 asks Project 03 for the current Buffer status and updates the rows.
+
+A status check never fails a post by itself. If Buffer cannot be reached, or the
+stored token is rejected, the last known status is kept and the error is shown.
+Only a real Buffer answer changes a destination status.
+
+If `upload_to_buffer` is **false**, the voice goes `rendered -> completed` and
+stays downloadable. A `QueueRun` is `processing` while work is in flight and
+finishes as `completed` (or `failed` when every voice failed).
+
+`QueueRun.completed_items` advances after each voice, so the UI progress is
+`completed_items / total_items`. Failed voices still advance progress and do not
+stop the rest of the run.
+
