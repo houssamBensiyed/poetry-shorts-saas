@@ -332,3 +332,91 @@ finishes as `completed` (or `failed` when every voice failed).
 `completed_items / total_items`. Failed voices still advance progress and do not
 stop the rest of the run.
 
+## API surface
+
+All user endpoints require a NextAuth session. Admin endpoints require
+`role === ADMIN`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/auth/register` | Register (`email`, `password`) |
+| GET/POST | `/api/channels` | List grouped channels + posting times / create a channel |
+| PUT/DELETE | `/api/channels/:id` | Update / delete a channel |
+| POST | `/api/channels/:id/refresh-destinations` | Re-read platforms from Buffer |
+| POST | `/api/buffer/organizations` | List Buffer organizations (server-to-server) |
+| POST | `/api/buffer/channels` | List Buffer platforms in one organization |
+| GET/POST | `/api/posting-times` | List / add a remembered UTC time |
+| DELETE | `/api/posting-times/:id` | Remove a remembered time |
+| GET | `/api/voices/schedule-options` | Free/suggested times for a channel and date |
+| GET/POST | `/api/voices` | List / multipart-upload voices |
+| PATCH/DELETE | `/api/voices/:id` | Reschedule a queued voice / delete |
+| POST | `/api/voices/sync-statuses` | Refresh Buffer statuses (`?force=1` checks future posts) |
+| POST | `/api/voices/:id/retry` | Retry a failed voice (single-voice run) |
+| GET/POST | `/api/queue` | Live run status / process all queued voices |
+| PATCH | `/api/profile` | Change the display name or password |
+| PATCH | `/api/profile/storage` | Choose local or remote storage for new voices |
+| PUT/DELETE | `/api/profile/avatar` | Save a built-in/custom picture or restore the default |
+| GET/PUT/DELETE | `/api/profile/cloudinary` | Read, save, or remove this user's Cloudinary account |
+| GET | `/api/voices/:id/media?kind=audio\|video` | Stream a local file (remote voices redirect) |
+| GET | `/api/admin` | Users + BullMQ counts |
+| PATCH/DELETE | `/api/admin/users/:id` | Toggle active / delete a user |
+| POST | `/api/webhooks/render-complete` | Project 02 callback |
+| POST | `/api/webhooks/publish-complete` | Project 03 callback |
+
+### Service contracts used by the worker
+
+`POST ${RENDER_SERVICE_URL}/api/v1/render` (header `X-API-Key`):
+
+```json
+{
+  "voice_id": "...",
+  "audio_url": "https://res.cloudinary.com/...",
+  "channel_name": "Daily Poetry",
+  "reel_style": "A",
+  "language": "en",
+  "callback_url": "http://localhost:3000/api/webhooks/render-complete"
+}
+```
+
+For local voices the worker adds `"storage_mode": "local"`, and `audio_url` is an
+absolute path inside `LOCAL_MEDIA_ROOT`. The render webhook then returns the
+reel's absolute path in `video_url` instead of a Cloudinary URL. Remote requests
+omit the field, so an older render service still accepts them. Both services must
+see the shared folder at the same path.
+
+`POST ${UPLOAD_SERVICE_URL}/api/v1/publish` (header `X-API-Key` when
+`UPLOAD_SERVICE_API_KEY` is set):
+
+```json
+{
+  "voice_id": "...",
+  "video_url": "https://res.cloudinary.com/.../reel.mp4",
+  "title": "Daily Poetry #1",
+  "description": "...",
+  "scheduled_at": "2026-11-20T18:30:00.000Z",
+  "buffer_access_token": "1/...",
+  "destinations": [
+    { "buffer_channel_id": "673...", "service": "instagram" },
+    { "buffer_channel_id": "674...", "service": "youtube", "youtube_category_id": "22" }
+  ],
+  "callback_url": "http://localhost:3000/api/webhooks/publish-complete"
+}
+```
+
+Project 03 calls Buffer once per destination and returns one result per
+destination. The worker stores those results immediately; the optional callback
+carries the same data and is safe to receive twice. Statuses only move forward,
+so a late callback cannot turn a published post back into a scheduled one.
+
+Project 03 responds with:
+
+```json
+{
+  "voice_id": "...",
+  "status": "scheduled",
+  "results": [
+    { "buffer_channel_id": "673...", "buffer_post_id": "...", "status": "scheduled", "error": null }
+  ]
+}
+```
+
