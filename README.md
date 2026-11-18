@@ -420,3 +420,105 @@ Project 03 responds with:
 }
 ```
 
+## Storage modes
+
+Each user chooses a storage mode in **Settings -> File storage** and connects
+their own Cloudinary account in **Settings -> Cloudinary**. New voices copy the
+storage choice; queued and rendered voices keep the mode they were uploaded
+with.
+
+| Mode | Voice | Reel | Buffer |
+| --- | --- | --- | --- |
+| Remote | Uploaded to the user's Cloudinary account by the SaaS | Uploaded by Project 02 to its own Cloudinary account | Uses the reel URL Project 02 returns |
+| Local | `LOCAL_MEDIA_ROOT/voices/<id>.<ext>` | Written by Project 02 to `LOCAL_MEDIA_ROOT/reels/` | Only the final reel is uploaded to the user's Cloudinary account at publish time |
+
+Every voice upload is tied to the account of the user who created it. A voice
+whose owner has no Cloudinary account is rejected with a message pointing to
+**Settings -> Cloudinary**, and the worker fails a local reel publish with the
+same guidance instead of borrowing another account.
+
+Remote mode is the only place where Project 02 needs Cloudinary. Configure that
+account in Project 02's own `.env`; it does not have to match the user's.
+
+Buffer has no file-upload endpoint, so it always needs a public URL. Local mode
+therefore uploads the finished reel once, immediately before publishing, and
+stores that URL in `Voice.buffer_video_url`. Voices with `upload_to_buffer=false`
+never leave the machine.
+
+Local files are served by `GET /api/voices/:id/media`, which checks ownership and
+confines every path to `LOCAL_MEDIA_ROOT`. Deleting a voice removes its local
+files (best effort).
+
+## Security notes
+
+- Buffer tokens are encrypted with AES-256-GCM before insert. The stored format
+  is `iv.tag.ciphertext` (base64url), and the key never leaves the server.
+- Cloudinary API secrets are encrypted the same way, one per user, with
+  `BUFFER_ENCRYPTION_KEY`. The API only returns whether a secret exists, never
+  the secret itself.
+- The UI and channel API never return the stored token; only `hasBufferToken` is
+  exposed.
+- Passwords are hashed with bcrypt (cost 12).
+- The worker decrypts a channel token only when it is about to publish.
+- Platform discovery goes through Project 03. The browser never receives a
+  Buffer token, and Project 01 never builds platform-specific Buffer fields.
+- Render and publish webhooks are protected by a shared secret. Set
+  `WEBHOOK_SECRET` and configure Project 02 and Project 03 to send it in the
+  `X-Webhook-Secret` header. When the variable is unset the endpoints stay open
+  in development but reject every request in production.
+- Admin accounts cannot disable or delete themselves.
+
+## Project layout
+
+```
+prisma/
+  schema.prisma          data model
+  migrations/            SQL migrations
+  seed.ts                admin bootstrap
+  reset-activity.ts      clear operational history, keep accounts/channels
+src/
+  app/
+    api/                 route handlers (auth, channels, voices, queue, webhooks, admin)
+    dashboard/           authenticated UI (overview, channels, voices, queue,
+                         profile, settings, admin)
+    login/ register/     public auth pages
+  components/            UI primitives, charts, avatar, theme, managers, nav
+  lib/                   prisma, auth, crypto, queue, runs, cloudinary,
+                         cloudinary-credentials, avatar, validation, language,
+                         time, uploader, publish-status, sync, posting-times
+worker/
+  index.ts               BullMQ worker + orphan reconciliation
+  pipeline.ts            sequential render -> publish -> progress pipeline
+```
+
+## Troubleshooting
+
+- **The app starts but `DATABASE_URL` or Redis errors appear** - run
+  `docker compose up -d` and confirm `docker compose ps` shows both services as
+  healthy.
+- **`BUFFER_ENCRYPTION_KEY must be a 64-character hex string`** - generate one
+  with `openssl rand -hex 32`.
+- **Upload says Cloudinary is not set up** - open **Settings -> Cloudinary** and
+  connect the account first. The check runs before the audio file is read.
+- **Cloudinary rejects the key or secret** - copy the cloud name, API key, and
+  API secret from the Cloudinary dashboard. Use the cloud name alone, not a URL.
+- **A saved Cloudinary secret cannot be read** - `BUFFER_ENCRYPTION_KEY` changed.
+  Restore the old key or enter the API secret again in Profile.
+- **Queue runs stay `processing`** - make sure `npm run worker` is running and
+  Redis is reachable. The worker re-enqueues orphaned processing runs on start.
+- **Render requests return 401** - `RENDER_SERVICE_API_KEY` must equal Project
+  02's `VIDEO_BUILDER_API_KEY`.
+- **Publishing returns "The Buffer service is not reachable"** - Project 03 is
+  not running on `UPLOAD_SERVICE_URL` (default port 8001).
+- **Webhooks never arrive** - `WEBHOOK_BASE_URL` must be reachable from Project
+  02/03. Keep the three services on the same host for local development.
+- **Webhook callbacks return 401** - `WEBHOOK_SECRET` is set. Send the same value
+  from Project 02/03 in the `X-Webhook-Secret` header. In production the secret
+  is required, so a missing value rejects every callback.
+- **Local reels cannot be found** - `LOCAL_MEDIA_ROOT` must be an absolute path
+  shared with Project 02, and both processes must see the same files.
+- **`npm run build` fails with missing chunks** - stop `npm run dev`, delete
+  `.next`, then build again.
+- **Docker permission error** - your user needs access to
+  `/var/run/docker.sock`, or point `DATABASE_URL`/`REDIS_URL` at existing
+  services.
